@@ -1,5 +1,420 @@
 --[[
     ╔══════════════════════════════════════════╗
+    ║      DEEPSIK HUB v4.0 - KEY SYSTEM       ║
+    ║      Простая система ключей              ║
+    ╚══════════════════════════════════════════╝
+]]
+
+-- ============ НАСТРОЙКИ ============
+local VALID_KEYS = {
+    ["DEEPSIK-VIP"]     = true,
+    ["BETA-TESTER"]     = true,
+    ["FREE-KEY-2024"]   = true,
+    ["DEMO-ACCESS"]     = true,
+}
+
+-- Ссылка "Получить ключ"
+local GET_KEY_URL = "https://example.com/deepsik-key"
+
+-- Основной скрипт (URL твоего Deepsik Hub)
+local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/ktoa4451-bot/Deepsik-Hub/refs/heads/main/Deepsik-Hub.lua"
+
+-- Авто-сохранение ключа (чтобы не вводить каждый раз)
+local SAVE_KEY = true
+local SAVE_FILE = "DeepsikKey.txt"
+
+-- ============ ПРОВЕРКА СОХРАНЁННОГО КЛЮЧА ============
+local function GetSavedKey()
+    if not SAVE_KEY then return nil end
+    local ok, data = pcall(function()
+        if isfile and isfile(SAVE_FILE) then
+            return readfile(SAVE_FILE)
+        end
+    end)
+    return ok and data or nil
+end
+
+local function SaveKey(key)
+    if not SAVE_KEY then return end
+    pcall(function()
+        writefile(SAVE_FILE, key)
+    end)
+end
+
+-- ============ ЗАГРУЗКА ОСНОВНОГО СКРИПТА ============
+local function LoadHub()
+    print("🔓 [Deepsik] Ключ принят, загрузка Hub...")
+
+    local function Fetch(url)
+        local methods = {
+            function() return request({Url = url, Method = "GET"}).Body end,
+            function() return http_request({Url = url, Method = "GET"}).Body end,
+            function() return syn.request({Url = url, Method = "GET"}).Body end,
+            function() return http.get(url).body end,
+            function() return game:HttpGet(url) end,
+        }
+        for _, m in ipairs(methods) do
+            local ok, res = pcall(m)
+            if ok and res and #res > 0 then return res end
+        end
+    end
+
+    -- Если URL локальный — загружаем сразу
+    if MAIN_SCRIPT_URL == "LOCAL" then
+        return
+    end
+
+    local src = Fetch(MAIN_SCRIPT_URL)
+    if not src then
+        warn("[Deepsik] Не удалось загрузить Hub")
+        return
+    end
+
+    local fn, err = loadstring(src)
+    if not fn then
+        warn("[Deepsik] Ошибка компиляции:", err)
+        return
+    end
+
+    local ok, runErr = pcall(fn)
+    if not ok then
+        warn("[Deepsik] Ошибка выполнения:", runErr)
+    end
+end
+
+-- ============ ПРОВЕРКА КЛЮЧА ============
+local function CheckKey(key)
+    if not key or key == "" then return false end
+    return VALID_KEYS[key] == true
+end
+
+-- Автологин если ключ сохранён
+local savedKey = GetSavedKey()
+if savedKey and CheckKey(savedKey) then
+    print("🔓 [Deepsik] Автологин с сохранённым ключом")
+    LoadHub()
+    return
+end
+
+-- ============ UI ВВОДА КЛЮЧА ============
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local LP = Players.LocalPlayer
+local PlayerGui = LP:WaitForChild("PlayerGui")
+
+local KeyGui = Instance.new("ScreenGui")
+KeyGui.Name = "DeepsikKeySystem"
+KeyGui.ResetOnSpawn = false
+KeyGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+KeyGui.IgnoreGuiInset = true
+KeyGui.DisplayOrder = 9999
+KeyGui.Parent = PlayerGui
+
+-- ===== ФОН (анимированный) =====
+local Background = Instance.new("Frame")
+Background.Size = UDim2.new(1, 0, 1, 0)
+Background.BackgroundColor3 = Color3.fromRGB(8, 8, 12)
+Background.BorderSizePixel = 0
+Background.ZIndex = 1
+Background.Parent = KeyGui
+
+local BgGradient = Instance.new("UIGradient")
+BgGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(15, 10, 30)),
+    ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 60, 120)),
+    ColorSequenceKeypoint.new(0.66, Color3.fromRGB(100, 0, 150)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(15, 10, 30)),
+})
+BgGradient.Rotation = 45
+BgGradient.Parent = Background
+
+task.spawn(function()
+    while Background.Parent do
+        BgGradient.Rotation = (BgGradient.Rotation + 0.5) % 360
+        task.wait(0.03)
+    end
+end)
+
+-- ===== ОСНОВНОЕ ОКНО =====
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 440, 0, 340)
+Frame.Position = UDim2.new(0.5, -220, 0.5, -170)
+Frame.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+Frame.BackgroundTransparency = 0.05
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true
+Frame.ZIndex = 2
+Frame.Parent = KeyGui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 16)
+Corner.Parent = Frame
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Color = Color3.fromRGB(0, 170, 255)
+Stroke.Thickness = 2
+Stroke.Transparency = 0.3
+Stroke.Parent = Frame
+
+-- Пульсация обводки
+task.spawn(function()
+    local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+    TweenService:Create(Stroke, tweenInfo, {Transparency = 0.75}):Play()
+end)
+
+local FrameGradient = Instance.new("UIGradient")
+FrameGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(15, 15, 22)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(22, 18, 32)),
+})
+FrameGradient.Rotation = 90
+FrameGradient.Parent = Frame
+
+-- ===== ЗАГОЛОВОК =====
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 60)
+Title.Position = UDim2.new(0, 0, 0, 15)
+Title.BackgroundTransparency = 1
+Title.Text = "🔫 DEEPSIK HUB"
+Title.TextColor3 = Color3.fromRGB(0, 200, 255)
+Title.TextSize = 28
+Title.Font = Enum.Font.GothamBold
+Title.ZIndex = 3
+Title.Parent = Frame
+
+local TitleGradient = Instance.new("UIGradient")
+TitleGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 170, 255)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(150, 100, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 50, 200)),
+})
+TitleGradient.Rotation = 0
+TitleGradient.Parent = Title
+
+task.spawn(function()
+    while Title.Parent do
+        TitleGradient.Offset = Vector2.new((tick() * 0.3) % 1, 0)
+        task.wait(0.03)
+    end
+end)
+
+local Subtitle = Instance.new("TextLabel")
+Subtitle.Size = UDim2.new(1, 0, 0, 25)
+Subtitle.Position = UDim2.new(0, 0, 0, 70)
+Subtitle.BackgroundTransparency = 1
+Subtitle.Text = "Введите ключ для доступа"
+Subtitle.TextColor3 = Color3.fromRGB(180, 180, 200)
+Subtitle.TextSize = 14
+Subtitle.Font = Enum.Font.Gotham
+Subtitle.ZIndex = 3
+Subtitle.Parent = Frame
+
+-- ===== ПОЛЕ ВВОДА =====
+local InputBg = Instance.new("Frame")
+InputBg.Size = UDim2.new(0, 360, 0, 48)
+InputBg.Position = UDim2.new(0.5, -180, 0, 115)
+InputBg.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+InputBg.BorderSizePixel = 0
+InputBg.ZIndex = 3
+InputBg.Parent = Frame
+
+local InputCorner = Instance.new("UICorner")
+InputCorner.CornerRadius = UDim.new(0, 10)
+InputCorner.Parent = InputBg
+
+local InputStroke = Instance.new("UIStroke")
+InputStroke.Color = Color3.fromRGB(60, 60, 80)
+InputStroke.Thickness = 1.5
+InputStroke.Parent = InputBg
+
+local Input = Instance.new("TextBox")
+Input.Size = UDim2.new(1, -30, 1, 0)
+Input.Position = UDim2.new(0, 15, 0, 0)
+Input.BackgroundTransparency = 1
+Input.Text = ""
+Input.PlaceholderText = "🔑 Введите ключ..."
+Input.TextColor3 = Color3.fromRGB(255, 255, 255)
+Input.PlaceholderColor3 = Color3.fromRGB(120, 120, 140)
+Input.TextSize = 16
+Input.Font = Enum.Font.GothamMedium
+Input.ClearTextOnFocus = false
+Input.TextXAlignment = Enum.TextXAlignment.Left
+Input.ZIndex = 4
+Input.Parent = InputBg
+
+Input.Focused:Connect(function()
+    TweenService:Create(InputStroke, TweenInfo.new(0.2), {
+        Color = Color3.fromRGB(0, 170, 255),
+        Thickness = 2
+    }):Play()
+end)
+
+Input.FocusLost:Connect(function(enter)
+    TweenService:Create(InputStroke, TweenInfo.new(0.2), {
+        Color = Color3.fromRGB(60, 60, 80),
+        Thickness = 1.5
+    }):Play()
+    if enter then
+        -- Enter нажат — попытка входа
+        local key = Input.Text
+        if key == "" then return end
+        if CheckKey(key) then
+            SaveKey(key)
+            KeyGui:Destroy()
+            LoadHub()
+        else
+            Status.Text = "❌ Неверный ключ!"
+            Status.TextColor3 = Color3.fromRGB(255, 80, 80)
+        end
+    end
+end)
+
+-- ===== СТАТУС =====
+local Status = Instance.new("TextLabel")
+Status.Size = UDim2.new(1, -40, 0, 25)
+Status.Position = UDim2.new(0, 20, 0, 175)
+Status.BackgroundTransparency = 1
+Status.Text = ""
+Status.TextColor3 = Color3.fromRGB(255, 80, 80)
+Status.TextSize = 13
+Status.Font = Enum.Font.GothamMedium
+Status.ZIndex = 3
+Status.Parent = Frame
+
+-- ===== КНОПКА ВОЙТИ =====
+local LoginBtn = Instance.new("TextButton")
+LoginBtn.Size = UDim2.new(0, 200, 0, 48)
+LoginBtn.Position = UDim2.new(0.5, -100, 0, 210)
+LoginBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+LoginBtn.Text = "✅  ВОЙТИ"
+LoginBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+LoginBtn.TextSize = 16
+LoginBtn.Font = Enum.Font.GothamBold
+LoginBtn.AutoButtonColor = false
+LoginBtn.ZIndex = 3
+LoginBtn.Parent = Frame
+
+local LoginCorner = Instance.new("UICorner")
+LoginCorner.CornerRadius = UDim.new(0, 10)
+LoginCorner.Parent = LoginBtn
+
+local LoginGradient = Instance.new("UIGradient")
+LoginGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 150, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(150, 80, 255)),
+})
+LoginGradient.Rotation = 0
+LoginGradient.Parent = LoginBtn
+
+LoginBtn.MouseEnter:Connect(function()
+    TweenService:Create(LoginBtn, TweenInfo.new(0.15), {
+        Size = UDim2.new(0, 210, 0, 52),
+        Position = UDim2.new(0.5, -105, 0, 208)
+    }):Play()
+end)
+
+LoginBtn.MouseLeave:Connect(function()
+    TweenService:Create(LoginBtn, TweenInfo.new(0.15), {
+        Size = UDim2.new(0, 200, 0, 48),
+        Position = UDim2.new(0.5, -100, 0, 210)
+    }):Play()
+end)
+
+LoginBtn.MouseButton1Click:Connect(function()
+    local key = Input.Text
+    if key == "" then
+        Status.Text = "❌ Введите ключ!"
+        Status.TextColor3 = Color3.fromRGB(255, 200, 80)
+        return
+    end
+
+    if CheckKey(key) then
+        Status.Text = "✅ Доступ разрешён!"
+        Status.TextColor3 = Color3.fromRGB(80, 255, 120)
+        SaveKey(key)
+        task.wait(0.6)
+        KeyGui:Destroy()
+        LoadHub()
+    else
+        Status.Text = "❌ Неверный ключ!"
+        Status.TextColor3 = Color3.fromRGB(255, 80, 80)
+
+        -- Тряска окна
+        task.spawn(function()
+            local orig = Frame.Position
+            for i = 1, 6 do
+                Frame.Position = orig + UDim2.new(0, (i % 2 == 0 and 6 or -6), 0, 0)
+                task.wait(0.03)
+            end
+            Frame.Position = orig
+        end)
+    end
+end)
+
+-- ===== КНОПКА ПОЛУЧИТЬ КЛЮЧ =====
+local GetKeyBtn = Instance.new("TextButton")
+GetKeyBtn.Size = UDim2.new(0, 200, 0, 36)
+GetKeyBtn.Position = UDim2.new(0.5, -100, 0, 275)
+GetKeyBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+GetKeyBtn.Text = "🔗  ПОЛУЧИТЬ КЛЮЧ"
+GetKeyBtn.TextColor3 = Color3.fromRGB(200, 200, 220)
+GetKeyBtn.TextSize = 13
+GetKeyBtn.Font = Enum.Font.GothamBold
+GetKeyBtn.AutoButtonColor = false
+GetKeyBtn.ZIndex = 3
+GetKeyBtn.Parent = Frame
+
+local GetKeyCorner = Instance.new("UICorner")
+GetKeyCorner.CornerRadius = UDim.new(0, 10)
+GetKeyCorner.Parent = GetKeyBtn
+
+GetKeyBtn.MouseEnter:Connect(function()
+    TweenService:Create(GetKeyBtn, TweenInfo.new(0.15), {
+        BackgroundColor3 = Color3.fromRGB(55, 55, 75)
+    }):Play()
+end)
+
+GetKeyBtn.MouseLeave:Connect(function()
+    TweenService:Create(GetKeyBtn, TweenInfo.new(0.15), {
+        BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+    }):Play()
+end)
+
+GetKeyBtn.MouseButton1Click:Connect(function()
+    pcall(function()
+        if setclipboard then
+            setclipboard(GET_KEY_URL)
+        end
+    end)
+    Status.Text = "📋 Ссылка скопирована: " .. GET_KEY_URL
+    Status.TextColor3 = Color3.fromRGB(0, 200, 255)
+end)
+
+-- ===== ВЕРСИЯ =====
+local VerLabel = Instance.new("TextLabel")
+VerLabel.Size = UDim2.new(1, 0, 0, 20)
+VerLabel.Position = UDim2.new(0, 0, 1, -25)
+VerLabel.BackgroundTransparency = 1
+VerLabel.Text = "Deepsik Hub v4.0  •  Key System"
+VerLabel.TextColor3 = Color3.fromRGB(100, 100, 120)
+VerLabel.TextSize = 11
+VerLabel.Font = Enum.Font.Gotham
+VerLabel.ZIndex = 3
+VerLabel.Parent = Frame
+
+-- ===== ПЛАВНОЕ ПОЯВЛЕНИЕ =====
+Frame.Size = UDim2.new(0, 0, 0, 0)
+Frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+TweenService:Create(Frame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+    Size = UDim2.new(0, 440, 0, 340),
+    Position = UDim2.new(0.5, -220, 0.5, -170)
+}):Play()
+
+print("🔐 [Deepsik] Key System загружена. Введите ключ.")
+
+--[[
+    ╔══════════════════════════════════════════╗
     ║      DEEPSIK HUB v4.0 - MM2              ║
     ║      ЧАСТЬ 1/7: Ядро + GUI               ║
     ╚══════════════════════════════════════════╝

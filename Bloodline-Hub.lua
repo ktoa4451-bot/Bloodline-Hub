@@ -1,10 +1,11 @@
 --[[
     ╔══════════════════════════════════════════╗
-    ║      BLOODLINE HUB v2.0                  ║
-    ║      ЧАСТЬ 1A: Ядро + GUI (каркас)       ║
+    ║      BLOODLINE HUB v2.1                  ║
+    ║      ЧАСТЬ 1/8: Ядро + GUI               ║
     ╚══════════════════════════════════════════╝
 ]]
 
+-- Безопасное получение сервисов
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
@@ -12,14 +13,25 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local StarterGui = game:GetService("StarterGui")
 
--- Ждём LocalPlayer
-local LP = Players.LocalPlayer
-if not LP then
-    repeat task.wait(0.1) until Players.LocalPlayer
+-- Ждём LocalPlayer безопасно
+local LP
+local _t = tick()
+while not LP and tick() - _t < 15 do
     LP = Players.LocalPlayer
+    if not LP then task.wait(0.1) end
+end
+if not LP then
+    warn("[Bloodline] LocalPlayer не найден за 15 сек")
+    return
 end
 
-local PlayerGui = LP:FindFirstChild("PlayerGui") or LP:WaitForChild("PlayerGui", 10)
+-- Ждём PlayerGui
+local PlayerGui
+_t = tick()
+repeat
+    task.wait(0.1)
+    PlayerGui = LP:FindFirstChild("PlayerGui")
+until PlayerGui or tick() - _t > 10
 if not PlayerGui then
     warn("[Bloodline] PlayerGui не найден")
     return
@@ -46,49 +58,34 @@ local COLORS = {
     border = Color3.fromRGB(60, 25, 35),
     toggleOff = Color3.fromRGB(70, 35, 40),
     toggleOn = Color3.fromRGB(220, 40, 60),
-    gold = Color3.fromRGB(255, 200, 60),
-    green = Color3.fromRGB(80, 220, 130),
-    blue = Color3.fromRGB(80, 130, 255),
 }
 getgenv().BloodlineColors = COLORS
 
 -- ============ КОНФИГ ============
 getgenv().BloodlineConfig = getgenv().BloodlineConfig or {
-    -- Движение
     SpeedHack = false, SpeedValue = 60,
     JumpPower = false, JumpValue = 120,
     Noclip = false, InfiniteJump = false,
     Fly = false, FlySpeed = 50,
     Spin = false, SpinSpeed = 15,
     AntiAFK = true,
-    -- Combat
     SilentAim = false, SilentAimFOV = 100,
     KillAura = false, AuraRange = 30,
     KillOnlySheriff = false,
     KnifeAimbot = false,
-    -- Visuals
     ESP = false, RoleESP = true, GunESP = false,
     Tracers = false, HitboxExpander = false, HitboxSize = 5,
     ESPColor = Color3.fromRGB(200, 130, 255),
-    SkeletonESP = false,
     ChinaHat = false, ChinaHatColor = Color3.fromRGB(255, 80, 80),
     JumpCircle = false, GunBeam = false,
     GunBeamColor = Color3.fromRGB(200, 130, 255),
     BigHead = false, Fullbright = false,
-    -- Fun
     TouchFling = false, ClickFling = false,
     FlingAll = false, FlingMurder = false, FlingSheriff = false,
     FakeKorblox = false, FakeHeadless = false,
-    -- Защита
-    AntiFling = true,
-    AntiFlingForce = false,
-    AntiCheatDetector = false,
-    AntiRagdoll = false,
-    -- Trade Info
-    TradeInfo = false,
-    RoleNotifier = false,
-    KillNotifier = false,
-    -- Misc
+    AntiFling = true, AntiFlingForce = false,
+    AntiCheatDetector = false, AntiRagdoll = false,
+    TradeInfo = false, RoleNotifier = false, KillNotifier = false,
     Watermark = true,
 }
 local Config = getgenv().BloodlineConfig
@@ -100,7 +97,7 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.DisplayOrder = 999
-ScreenGui.Parent = PlayerGui
+pcall(function() ScreenGui.Parent = PlayerGui end)
 getgenv().BloodlineMenuGui = ScreenGui
 
 -- ===== ГЛАВНОЕ ОКНО =====
@@ -147,7 +144,7 @@ TopMask.BorderSizePixel = 0
 TopMask.ZIndex = 3
 TopMask.Parent = TopBar
 
--- Кровавая полоса
+-- Кровавая полоса (БЕЗ анимации градиента — статика)
 local BloodStripe = Instance.new("Frame")
 BloodStripe.Size = UDim2.new(1, -30, 0, 3)
 BloodStripe.Position = UDim2.new(0, 15, 1, -3)
@@ -159,23 +156,14 @@ local BS_Corner = Instance.new("UICorner")
 BS_Corner.CornerRadius = UDim.new(1, 0)
 BS_Corner.Parent = BloodStripe
 
+-- Простой градиент из 2 точек (безопасно)
 local BS_Grad = Instance.new("UIGradient")
-BS_Grad.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 0, 10)),
-    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 40, 60)),
-    ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 0, 10)),
-})
-BS_Grad.Parent = BloodStripe
-
--- Анимация крови
-task.spawn(function()
-    while BloodStripe.Parent do
-        pcall(function()
-            BS_Grad.Offset = Vector2.new((tick() * 0.5) % 1, 0)
-        end)
-        task.wait(0.03)
-    end
-end)
+BS_Grad.Color = ColorSequence.new(
+    Color3.fromRGB(100, 0, 10),
+    Color3.fromRGB(255, 40, 60)
+)
+BS_Grad.Rotation = 0
+pcall(function() BS_Grad.Parent = BloodStripe end)
 
 -- Лого
 local Logo = Instance.new("TextLabel")
@@ -187,19 +175,6 @@ Logo.TextSize = 34
 Logo.Font = Enum.Font.GothamBold
 Logo.ZIndex = 4
 Logo.Parent = TopBar
-
--- Пульсация лого
-task.spawn(function()
-    while Logo.Parent do
-        pcall(function()
-            local ti = TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-            TweenService:Create(Logo, ti, {TextSize = 38}):Play()
-            task.wait(1)
-            TweenService:Create(Logo, ti, {TextSize = 32}):Play()
-            task.wait(1)
-        end)
-    end
-end)
 
 -- Название
 local BrandName = Instance.new("TextLabel")
@@ -218,7 +193,7 @@ local SubBrand = Instance.new("TextLabel")
 SubBrand.Size = UDim2.new(0, 300, 0, 18)
 SubBrand.Position = UDim2.new(0, 70, 0, 34)
 SubBrand.BackgroundTransparency = 1
-SubBrand.Text = "v2.0 • MM2 Hub • 🩸"
+SubBrand.Text = "v2.1 • MM2 Hub • 🩸"
 SubBrand.TextColor3 = COLORS.textDim
 SubBrand.TextSize = 11
 SubBrand.Font = Enum.Font.Gotham
@@ -300,47 +275,32 @@ ContentStroke.Color = COLORS.border
 ContentStroke.Thickness = 1
 ContentStroke.Parent = ContentFrame
 
--- ============ СОХРАНЯЕМ БАЗОВЫЕ ССЫЛКИ ============
+-- ============ БАЗОВЫЕ ССЫЛКИ ============
 getgenv().BloodlineBase = {
-    ScreenGui = ScreenGui,
-    MainFrame = MainFrame,
-    TopBar = TopBar,
-    SideBar = SideBar,
-    SideScroll = SideScroll,
-    ContentFrame = ContentFrame,
-    CloseBtn = CloseBtn,
-    Logo = Logo,
-    BrandName = BrandName,
-    BloodStripe = BloodStripe,
-    Colors = COLORS,
-    Config = Config,
-    LP = LP,
-    Players = Players,
-    RunService = RunService,
-    UserInputService = UserInputService,
-    TweenService = TweenService,
-    Workspace = Workspace,
-    StarterGui = StarterGui,
+    ScreenGui = ScreenGui, MainFrame = MainFrame,
+    TopBar = TopBar, SideBar = SideBar, SideScroll = SideScroll,
+    ContentFrame = ContentFrame, CloseBtn = CloseBtn, Logo = Logo,
+    Colors = COLORS, Config = Config,
+    LP = LP, Players = Players, RunService = RunService,
+    UserInputService = UserInputService, TweenService = TweenService,
+    Workspace = Workspace, StarterGui = StarterGui,
 }
 
-print("✅ [Bloodline v2.0] Часть 1A — Ядро + GUI (каркас окна)")
+print("✅ [Bloodline v2.1] Часть 1/8 — Ядро + GUI")
 
 --[[
-    ╔══════════════════════════════════════════╗
-    ║      BLOODLINE HUB v2.0                  ║
-    ║      ЧАСТЬ 1B: Компоненты + Категории    ║
-    ╚══════════════════════════════════════════╝
+    BLOODLINE HUB v2.1
+    ЧАСТЬ 2/8: Компоненты + Категории
 ]]
 
 local B = getgenv().BloodlineBase
-if not B then warn("❌ Сначала запусти Часть 1A!") return end
+if not B then warn("❌ Сначала запусти Часть 1!") return end
 
 local TweenService = B.TweenService
 local UserInputService = B.UserInputService
 local COLORS = B.Colors
 local SideScroll = B.SideScroll
 local ContentFrame = B.ContentFrame
-local MainFrame = B.MainFrame
 
 -- ============ КОМПОНЕНТЫ ============
 local function CreateSection(parent, text)
@@ -554,57 +514,11 @@ local function CreateButton(parent, text, color, callback)
     return Btn
 end
 
--- Сетка предметов (для Trade Info)
-local function CreateItemGrid(parent, title)
-    local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, -10, 0, 130)
-    Frame.BackgroundColor3 = COLORS.card
-    Frame.BorderSizePixel = 0
-    Frame.ZIndex = 5
-    Frame.Parent = parent
-    local C = Instance.new("UICorner")
-    C.CornerRadius = UDim.new(0, 8)
-    C.Parent = Frame
-    local Stroke = Instance.new("UIStroke")
-    Stroke.Color = COLORS.border
-    Stroke.Thickness = 1
-    Stroke.Parent = Frame
-
-    local Title = Instance.new("TextLabel")
-    Title.Size = UDim2.new(1, -20, 0, 22)
-    Title.Position = UDim2.new(0, 12, 0, 6)
-    Title.BackgroundTransparency = 1
-    Title.Text = title
-    Title.TextColor3 = COLORS.accent
-    Title.TextSize = 13
-    Title.Font = Enum.Font.GothamBold
-    Title.TextXAlignment = Enum.TextXAlignment.Left
-    Title.ZIndex = 6
-    Title.Parent = Frame
-
-    local Grid = Instance.new("Frame")
-    Grid.Size = UDim2.new(1, -20, 0, 90)
-    Grid.Position = UDim2.new(0, 10, 0, 32)
-    Grid.BackgroundTransparency = 1
-    Grid.ZIndex = 6
-    Grid.Parent = Frame
-
-    local GridLayout = Instance.new("UIGridLayout")
-    GridLayout.CellSize = UDim2.new(0, 75, 0, 75)
-    GridLayout.CellPadding = UDim2.new(0, 6, 0, 6)
-    GridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    GridLayout.Parent = Grid
-
-    return Grid
-end
-
--- ============ ЭКСПОРТ UI ============
 getgenv().BloodlineUI = {
     CreateSection = CreateSection,
     CreateToggle = CreateToggle,
     CreateSlider = CreateSlider,
     CreateButton = CreateButton,
-    CreateItemGrid = CreateItemGrid,
 }
 
 -- ============ КАТЕГОРИИ ============
@@ -663,7 +577,6 @@ for i, cat in ipairs(categories) do
     table.insert(pages, Page)
 end
 
--- Переключение категорий
 local function SwitchCategory(idx)
     for i, tab in ipairs(categoryButtons) do
         pages[i].Visible = (i == idx)
@@ -696,76 +609,78 @@ end
 
 SwitchCategory(1)
 
--- ============ ОБЪЕДИНЯЕМ ССЫЛКИ ============
+-- Объединяем ссылки
 getgenv().BloodlineRefs = {
-    ScreenGui = B.ScreenGui,
-    MainFrame = B.MainFrame,
-    TopBar = B.TopBar,
-    SideBar = B.SideBar,
-    SideScroll = B.SideScroll,
-    ContentFrame = B.ContentFrame,
-    CloseBtn = B.CloseBtn,
-    Pages = pages,
-    CategoryButtons = categoryButtons,
+    ScreenGui = B.ScreenGui, MainFrame = B.MainFrame,
+    TopBar = B.TopBar, SideBar = B.SideBar, SideScroll = B.SideScroll,
+    ContentFrame = B.ContentFrame, CloseBtn = B.CloseBtn,
+    Pages = pages, CategoryButtons = categoryButtons,
     SwitchCategory = SwitchCategory,
-    Colors = COLORS,
-    Config = B.Config,
-    LP = B.LP,
-    Players = B.Players,
-    RunService = B.RunService,
-    UserInputService = B.UserInputService,
-    TweenService = B.TweenService,
-    Workspace = B.Workspace,
-    StarterGui = B.StarterGui,
+    Colors = COLORS, Config = B.Config,
+    LP = B.LP, Players = B.Players, RunService = B.RunService,
+    UserInputService = B.UserInputService, TweenService = B.TweenService,
+    Workspace = B.Workspace, StarterGui = B.StarterGui,
 }
 
--- Стартовое уведомление
 pcall(function()
     B.StarterGui:SetCore("SendNotification", {
-        Title = "🩸 Bloodline Hub v2.0",
-        Text = "✅ Меню загружено! RightShift — открыть/закрыть",
+        Title = "🩸 Bloodline v2.1",
+        Text = "✅ Меню загружено! RightShift — открыть",
         Duration = 4
     })
 end)
 
-print("✅ [Bloodline v2.0] Часть 1B — Компоненты + Категории")
+print("✅ [Bloodline v2.1] Часть 2/8 — Компоненты + Категории")
 
 --[[
-    BLOODLINE HUB v2.0
-    ЧАСТЬ 2/8: Home + General + Защита
+    BLOODLINE HUB v2.1
+    ЧАСТЬ 3/8: Home + General + Защита
 ]]
 
 local R = getgenv().BloodlineRefs
 local UI = getgenv().BloodlineUI
-if not R or not UI then warn("❌ Запусти Часть 1!") return end
+if not R or not UI then warn("❌ Запусти Части 1-2!") return end
 
 local LP = R.LP
 local Players = R.Players
 local RunService = R.RunService
-local UserInputService = R.UserInputService
 local COLORS = R.Colors
 local Config = R.Config
 
 local PageHome = R.Pages[1]
 local PageGeneral = R.Pages[2]
 
--- Хелперы
+-- Хелпер: определение роли
 local function GetRole(plr)
     if not plr or not plr.Character then return "Innocent" end
+    
+    local function CheckTool(tool)
+        if not tool or not tool:IsA("Tool") then return nil end
+        local n = tool.Name:lower()
+        if n:find("knife") or n:find("dagger") then return "Murder" end
+        if n:find("gun") or n:find("revolver") or n:find("pistol") then return "Sheriff" end
+        return nil
+    end
+    
     for _, tool in ipairs(plr.Character:GetChildren()) do
-        if tool:IsA("Tool") then
-            local n = tool.Name:lower()
-            if n:find("knife") or n:find("dagger") then return "Murder"
-            elseif n:find("gun") or n:find("revolver") then return "Sheriff"
-            end
+        local r = CheckTool(tool)
+        if r then return r end
+    end
+    
+    local bp = plr:FindFirstChild("Backpack")
+    if bp then
+        for _, tool in ipairs(bp:GetChildren()) do
+            local r = CheckTool(tool)
+            if r then return r end
         end
     end
+    
     return "Innocent"
 end
 getgenv().BloodlineGetRole = GetRole
 
--- ============ HOME ============
-UI.CreateSection(PageHome, "🩸 BLOODLINE HUB v2.0")
+-- HOME
+UI.CreateSection(PageHome, "🩸 BLOODLINE HUB v2.1")
 UI.CreateSection(PageHome, "💀 MM2 Hub • Made with 🩸")
 
 local StatsFrame = Instance.new("Frame")
@@ -798,7 +713,7 @@ task.spawn(function()
     while StLabel.Parent do
         pcall(function()
             StLabel.Text = string.format(
-                "👥 Игроков: %d\n📡 Ping: %d ms\n🎭 Роль: %s\n🩸 Bloodline v2.0",
+                "👥 Игроков: %d\n📡 Ping: %d ms\n🎭 Роль: %s\n🩸 Bloodline v2.1",
                 #Players:GetPlayers(),
                 math.floor(LP:GetNetworkPing() * 1000),
                 GetRole(LP)
@@ -810,62 +725,32 @@ end)
 
 UI.CreateSection(PageHome, "⌨ RightShift / F1 — меню")
 
--- ============ GENERAL + ЗАЩИТА ============
+-- GENERAL
 UI.CreateSection(PageGeneral, "⚙ ОБЩИЕ")
 UI.CreateToggle(PageGeneral, "Anti-AFK", Config.AntiAFK, function(s) Config.AntiAFK = s end)
 UI.CreateToggle(PageGeneral, "Watermark", Config.Watermark, function(s) Config.Watermark = s end)
 
--- ============ ANTI-FLING ============
 UI.CreateSection(PageGeneral, "🛡️ ЗАЩИТА ОТ ЧИТЕРОВ")
+UI.CreateToggle(PageGeneral, "Anti-Fling (защита от флинга)", Config.AntiFling, function(s) Config.AntiFling = s end)
+UI.CreateToggle(PageGeneral, "Anti-Fling Force (откидывать агрессора)", Config.AntiFlingForce, function(s) Config.AntiFlingForce = s end)
+UI.CreateToggle(PageGeneral, "Anti-Ragdoll (не падать)", Config.AntiRagdoll, function(s) Config.AntiRagdoll = s end)
+UI.CreateToggle(PageGeneral, "Anti-Cheat Detector", Config.AntiCheatDetector, function(s) Config.AntiCheatDetector = s end)
 
-UI.CreateToggle(PageGeneral, "Anti-Fling (защита от откидывания)", Config.AntiFling, function(s)
-    Config.AntiFling = s
-end)
+-- Anti-Fling логика
+table.insert(getgenv().BloodlineConns, RunService.Heartbeat:Connect(function()
+    if not Config.AntiFling then return end
+    pcall(function()
+        local char = LP.Character
+        if not char then return end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        if hrp.Velocity.Magnitude > 150 then
+            hrp.Velocity = Vector3.new(0, 0, 0)
+        end
+    end)
+end))
 
-UI.CreateToggle(PageGeneral, "Anti-Fling Force (откидывать агрессора)", Config.AntiFlingForce, function(s)
-    Config.AntiFlingForce = s
-end)
-
-UI.CreateToggle(PageGeneral, "Anti-Ragdoll (не падать)", Config.AntiRagdoll, function(s)
-    Config.AntiRagdoll = s
-end)
-
-UI.CreateToggle(PageGeneral, "Anti-Cheat Detector (детект читеров)", Config.AntiCheatDetector, function(s)
-    Config.AntiCheatDetector = s
-    if s then
-        R.StarterGui:SetCore("SendNotification", {
-            Title = "🛡️ Anti-Cheat",
-            Text = "Сканирование читеров...",
-            Duration = 3
-        })
-    end
-end)
-
--- ============ ANTI-FLING ЛОГИКА ============
-local lastMyVelocity = Vector3.new(0, 0, 0)
-task.spawn(function()
-    while task.wait(0.1) do
-        pcall(function()
-            if not Config.AntiFling then return end
-            local char = LP.Character
-            if not char then return end
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
-
-            -- Если скорость подозрительно высокая — сбрасываем
-            if hrp.Velocity.Magnitude > 150 then
-                hrp.Velocity = Vector3.new(0, 0, 0)
-            end
-            -- Отсекаем резкие скачки
-            if hrp.Velocity.Magnitude > lastMyVelocity.Magnitude + 50 then
-                hrp.Velocity = lastMyVelocity
-            end
-            lastMyVelocity = hrp.Velocity
-        end)
-    end
-end)
-
--- Anti-Fling Force (откидываем агрессора обратно)
+-- Anti-Fling Force
 table.insert(getgenv().BloodlineConns, RunService.Heartbeat:Connect(function()
     if not Config.AntiFlingForce then return end
     pcall(function()
@@ -873,12 +758,10 @@ table.insert(getgenv().BloodlineConns, RunService.Heartbeat:Connect(function()
         if not char then return end
         local myHrp = char:FindFirstChild("HumanoidRootPart")
         if not myHrp then return end
-
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LP and plr.Character then
                 local theirHrp = plr.Character:FindFirstChild("HumanoidRootPart")
                 if theirHrp and (myHrp.Position - theirHrp.Position).Magnitude < 5 then
-                    -- Только если он двигается быстро (признак флинга)
                     if theirHrp.Velocity.Magnitude > 100 then
                         theirHrp.Velocity = (theirHrp.Position - myHrp.Position).Unit * 500 + Vector3.new(0, 200, 0)
                     end
@@ -898,43 +781,25 @@ table.insert(getgenv().BloodlineConns, RunService.Heartbeat:Connect(function()
         if hum then
             hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
             hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-            hum:SetStateEnabled(Enum.HumanoidStateType.Physics, false)
         end
     end)
 end))
 
--- Anti-Cheat Detector (ищем подозрительное поведение)
+-- Anti-Cheat Detector
 task.spawn(function()
-    local suspiciousPlayers = {}
     while task.wait(1) do
         pcall(function()
             if not Config.AntiCheatDetector then return end
             for _, plr in ipairs(Players:GetPlayers()) do
                 if plr ~= LP and plr.Character then
-                    local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
                     local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-                    if hrp and hum then
-                        -- Признаки читера
-                        local suspicious = false
-                        local reason = ""
-
-                        if hum.WalkSpeed > 100 then
-                            suspicious = true
-                            reason = "Speed: " .. math.floor(hum.WalkSpeed)
-                        elseif hum.JumpPower > 200 then
-                            suspicious = true
-                            reason = "Jump: " .. math.floor(hum.JumpPower)
-                        elseif hrp.Velocity.Magnitude > 300 then
-                            suspicious = true
-                            reason = "Velocity: " .. math.floor(hrp.Velocity.Magnitude)
-                        end
-
-                        if suspicious and not suspiciousPlayers[plr] then
-                            suspiciousPlayers[plr] = tick()
+                    local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+                    if hum and hrp then
+                        if hum.WalkSpeed > 100 or hum.JumpPower > 200 or hrp.Velocity.Magnitude > 300 then
                             R.StarterGui:SetCore("SendNotification", {
                                 Title = "🚨 ANTI-CHEAT",
-                                Text = plr.Name .. " подозрительный! " .. reason,
-                                Duration = 5
+                                Text = plr.Name .. " подозрительный!",
+                                Duration = 3
                             })
                         end
                     end
@@ -954,32 +819,34 @@ table.insert(getgenv().BloodlineConns, LP.Idled:Connect(function()
     end)
 end))
 
-print("✅ [Bloodline v2.0] Часть 2/8 — Home + General + Защита")
+print("✅ [Bloodline v2.1] Часть 3/8 — Home + General + Защита")
 
 --[[
-    BLOODLINE HUB v2.0
-    ЧАСТЬ 3/8: MM2 + Движение
+    BLOODLINE HUB v2.1
+    ЧАСТЬ 4/8: MM2 (Движение + Combat)
 ]]
 
 local R = getgenv().BloodlineRefs
 local UI = getgenv().BloodlineUI
-if not R or not UI then warn("❌ Запусти Часть 1!") return end
+if not R or not UI then warn("❌ Запусти Части 1-3!") return end
 
 local LP = R.LP
+local Players = R.Players
 local RunService = R.RunService
 local UserInputService = R.UserInputService
 local Workspace = R.Workspace
+local Camera = Workspace.CurrentCamera
 local COLORS = R.Colors
 local Config = R.Config
 
 local PageMM2 = R.Pages[3]
+local GetRole = getgenv().BloodlineGetRole
 
+-- ============ ФУНКЦИИ ============
 local function UpdateSpeed()
     pcall(function()
         local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-        if hum then
-            hum.WalkSpeed = Config.SpeedHack and Config.SpeedValue or 16
-        end
+        if hum then hum.WalkSpeed = Config.SpeedHack and Config.SpeedValue or 16 end
     end)
 end
 
@@ -1046,7 +913,11 @@ local function StartFly()
     end))
 end
 
-table.insert(getgenv().BloodlineConns, RunService.Stepped:Connect(function()
+getgenv().BloodlineStopFly = StopFly
+getgenv().BloodlineStartFly = StartFly
+
+-- Noclip / Infinite Jump / Spin / респавн
+table.insert(getgenv().BloodlineConns, RunService.Heartbeat:Connect(function()
     if not Config.Noclip then return end
     local char = LP.Character
     if not char then return end
@@ -1080,59 +951,7 @@ table.insert(getgenv().BloodlineConns, LP.CharacterAdded:Connect(function()
     UpdateSpeed(); UpdateJump()
 end))
 
--- UI
-UI.CreateSection(PageMM2, "⚡ СКОРОСТЬ")
-UI.CreateToggle(PageMM2, "Speed Hack", Config.SpeedHack, function(s)
-    Config.SpeedHack = s; UpdateSpeed()
-end)
-UI.CreateSlider(PageMM2, "Скорость", 16, 250, Config.SpeedValue, function(v)
-    Config.SpeedValue = v; UpdateSpeed()
-end)
-
-UI.CreateSection(PageMM2, "🦘 ПРЫЖОК")
-UI.CreateToggle(PageMM2, "Jump Power", Config.JumpPower, function(s)
-    Config.JumpPower = s; UpdateJump()
-end)
-UI.CreateSlider(PageMM2, "Сила прыжка", 50, 500, Config.JumpValue, function(v)
-    Config.JumpValue = v; UpdateJump()
-end)
-UI.CreateToggle(PageMM2, "Infinite Jump", Config.InfiniteJump, function(s) Config.InfiniteJump = s end)
-
-UI.CreateSection(PageMM2, "🏃 ДВИЖЕНИЕ")
-UI.CreateToggle(PageMM2, "Noclip", Config.Noclip, function(s) Config.Noclip = s end)
-
-UI.CreateSection(PageMM2, "🕊️ ПОЛЁТ")
-UI.CreateToggle(PageMM2, "Fly", Config.Fly, function(s)
-    Config.Fly = s
-    if s then StartFly() else StopFly() end
-end)
-UI.CreateSlider(PageMM2, "Скорость полёта", 10, 300, Config.FlySpeed, function(v) Config.FlySpeed = v end)
-
-UI.CreateSection(PageMM2, "🌀 SPIN")
-UI.CreateToggle(PageMM2, "Spin", Config.Spin, function(s) Config.Spin = s end)
-UI.CreateSlider(PageMM2, "Скорость Spin", 1, 60, Config.SpinSpeed, function(v) Config.SpinSpeed = v end)
-
-print("✅ [Bloodline v2.0] Часть 3/8 — MM2 + Движение")
-
---[[
-    BLOODLINE HUB v2.0
-    ЧАСТЬ 4/8: Combat
-]]
-
-local R = getgenv().BloodlineRefs
-local UI = getgenv().BloodlineUI
-if not R or not UI then warn("❌ Запусти Часть 1!") return end
-
-local LP = R.LP
-local Players = R.Players
-local RunService = R.RunService
-local Camera = R.Workspace.CurrentCamera
-local COLORS = R.Colors
-local Config = R.Config
-
-local PageMM2 = R.Pages[3]
-local GetRole = getgenv().BloodlineGetRole
-
+-- Combat
 local function GetEquippedTool()
     local char = LP.Character
     if not char then return nil end
@@ -1165,7 +984,6 @@ end
 getgenv().BloodlineGetTargets = GetTargets
 getgenv().BloodlineGetTool = GetEquippedTool
 
--- Silent Aim
 table.insert(getgenv().BloodlineConns, RunService.RenderStepped:Connect(function()
     if not Config.SilentAim then return end
     pcall(function()
@@ -1173,7 +991,6 @@ table.insert(getgenv().BloodlineConns, RunService.RenderStepped:Connect(function
         if not tool or tool.Name:lower():find("knife") then return end
         local targets = GetTargets()
         if #targets == 0 then return end
-
         local sc = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
         local best, bestDist = nil, Config.SilentAimFOV
         for _, t in ipairs(targets) do
@@ -1189,16 +1006,13 @@ table.insert(getgenv().BloodlineConns, RunService.RenderStepped:Connect(function
     end)
 end))
 
--- Kill Aura
 table.insert(getgenv().BloodlineConns, RunService.Heartbeat:Connect(function()
     if not Config.KillAura then return end
     pcall(function()
         local tool = GetEquippedTool()
         if not tool then return end
         local targets = GetTargets(function(p)
-            if Config.KillOnlySheriff then
-                return GetRole(p) == "Sheriff"
-            end
+            if Config.KillOnlySheriff then return GetRole(p) == "Sheriff" end
             return true
         end)
         for _, t in ipairs(targets) do
@@ -1210,7 +1024,6 @@ table.insert(getgenv().BloodlineConns, RunService.Heartbeat:Connect(function()
     end)
 end))
 
--- Knife Aimbot
 table.insert(getgenv().BloodlineConns, RunService.Heartbeat:Connect(function()
     if not Config.KnifeAimbot then return end
     pcall(function()
@@ -1228,6 +1041,25 @@ table.insert(getgenv().BloodlineConns, RunService.Heartbeat:Connect(function()
 end))
 
 -- UI
+UI.CreateSection(PageMM2, "⚡ СКОРОСТЬ")
+UI.CreateToggle(PageMM2, "Speed Hack", Config.SpeedHack, function(s) Config.SpeedHack = s; UpdateSpeed() end)
+UI.CreateSlider(PageMM2, "Скорость", 16, 250, Config.SpeedValue, function(v) Config.SpeedValue = v; UpdateSpeed() end)
+
+UI.CreateSection(PageMM2, "🦘 ПРЫЖОК")
+UI.CreateToggle(PageMM2, "Jump Power", Config.JumpPower, function(s) Config.JumpPower = s; UpdateJump() end)
+UI.CreateSlider(PageMM2, "Сила прыжка", 50, 500, Config.JumpValue, function(v) Config.JumpValue = v; UpdateJump() end)
+UI.CreateToggle(PageMM2, "Infinite Jump", Config.InfiniteJump, function(s) Config.InfiniteJump = s end)
+
+UI.CreateSection(PageMM2, "🏃 ДВИЖЕНИЕ")
+UI.CreateToggle(PageMM2, "Noclip", Config.Noclip, function(s) Config.Noclip = s end)
+UI.CreateToggle(PageMM2, "Fly", Config.Fly, function(s)
+    Config.Fly = s
+    if s then StartFly() else StopFly() end
+end)
+UI.CreateSlider(PageMM2, "Скорость полёта", 10, 300, Config.FlySpeed, function(v) Config.FlySpeed = v end)
+UI.CreateToggle(PageMM2, "Spin", Config.Spin, function(s) Config.Spin = s end)
+UI.CreateSlider(PageMM2, "Скорость Spin", 1, 60, Config.SpinSpeed, function(v) Config.SpinSpeed = v end)
+
 UI.CreateSection(PageMM2, "🎯 SILENT AIM")
 UI.CreateToggle(PageMM2, "Silent Aim", Config.SilentAim, function(s) Config.SilentAim = s end)
 UI.CreateSlider(PageMM2, "Silent Aim FOV", 10, 500, Config.SilentAimFOV, function(v) Config.SilentAimFOV = v end)
@@ -1240,16 +1072,16 @@ UI.CreateToggle(PageMM2, "Kill Only Sheriff", Config.KillOnlySheriff, function(s
 UI.CreateSection(PageMM2, "🗡 KNIFE AIMBOT")
 UI.CreateToggle(PageMM2, "Knife Aimbot", Config.KnifeAimbot, function(s) Config.KnifeAimbot = s end)
 
-print("✅ [Bloodline v2.0] Часть 4/8 — Combat")
+print("✅ [Bloodline v2.1] Часть 4/8 — MM2")
 
 --[[
-    BLOODLINE HUB v2.0
+    BLOODLINE HUB v2.1
     ЧАСТЬ 5/8: Visuals
 ]]
 
 local R = getgenv().BloodlineRefs
 local UI = getgenv().BloodlineUI
-if not R or not UI then warn("❌ Запусти Часть 1!") return end
+if not R or not UI then warn("❌ Запусти Части 1-4!") return end
 
 local LP = R.LP
 local Players = R.Players
@@ -1464,22 +1296,6 @@ if not beamFolder then
     beamFolder.Parent = Workspace
 end
 
-local function CreateBeam(fromPos, toPos)
-    local dist = (toPos - fromPos).Magnitude
-    if dist < 1 then return end
-    local part = Instance.new("Part")
-    part.Size = Vector3.new(0.15, 0.15, dist)
-    part.CFrame = CFrame.new(fromPos, toPos) * CFrame.new(0, 0, -dist / 2)
-    part.Anchored = true
-    part.CanCollide = false
-    part.Material = Enum.Material.Neon
-    part.Color = Config.GunBeamColor
-    part.Transparency = 0.15
-    part.Parent = beamFolder
-    TweenService:Create(part, TweenInfo.new(0.5), {Transparency = 1}):Play()
-    task.delay(0.6, function() pcall(function() part:Destroy() end) end)
-end
-
 local function HookTools(char)
     if not char then return end
     for _, tool in ipairs(char:GetChildren()) do
@@ -1491,7 +1307,18 @@ local function HookTools(char)
                     if not handle then return end
                     local mouse = UserInputService:GetMouseLocation()
                     local ray = Camera:ViewportPointToRay(mouse.X, mouse.Y)
-                    CreateBeam(handle.Position, ray.Origin + ray.Direction * 500)
+                    local dist = 500
+                    local part = Instance.new("Part")
+                    part.Size = Vector3.new(0.15, 0.15, dist)
+                    part.CFrame = CFrame.new(handle.Position, ray.Origin + ray.Direction * dist) * CFrame.new(0, 0, -dist / 2)
+                    part.Anchored = true
+                    part.CanCollide = false
+                    part.Material = Enum.Material.Neon
+                    part.Color = Config.GunBeamColor
+                    part.Transparency = 0.15
+                    part.Parent = beamFolder
+                    TweenService:Create(part, TweenInfo.new(0.5), {Transparency = 1}):Play()
+                    task.delay(0.6, function() pcall(function() part:Destroy() end) end)
                 end)
             end))
         end
@@ -1522,16 +1349,16 @@ end))
 -- UI
 UI.CreateSection(PageVisuals, "👁️ ESP")
 UI.CreateToggle(PageVisuals, "ESP игроков", Config.ESP, function(s) Config.ESP = s end)
-UI.CreateToggle(PageVisuals, "Role ESP (роль цветом)", Config.RoleESP, function(s) Config.RoleESP = s end)
+UI.CreateToggle(PageVisuals, "Role ESP", Config.RoleESP, function(s) Config.RoleESP = s end)
 UI.CreateToggle(PageVisuals, "Gun ESP", Config.GunESP, function(s) Config.GunESP = s end)
-UI.CreateToggle(PageVisuals, "Tracers (линии)", Config.Tracers, function(s) Config.Tracers = s end)
+UI.CreateToggle(PageVisuals, "Tracers", Config.Tracers, function(s) Config.Tracers = s end)
 UI.CreateToggle(PageVisuals, "Hitbox Expander", Config.HitboxExpander, function(s) Config.HitboxExpander = s end)
 UI.CreateSlider(PageVisuals, "Hitbox Size", 2, 20, Config.HitboxSize, function(v) Config.HitboxSize = v end)
 
 UI.CreateSection(PageVisuals, "🎩 КОСМЕТИКА")
 UI.CreateToggle(PageVisuals, "China Hat", Config.ChinaHat, function(s) Config.ChinaHat = s end)
 UI.CreateToggle(PageVisuals, "Jump Circle", Config.JumpCircle, function(s) Config.JumpCircle = s end)
-UI.CreateToggle(PageVisuals, "Gun Beam (лазер)", Config.GunBeam, function(s) Config.GunBeam = s end)
+UI.CreateToggle(PageVisuals, "Gun Beam", Config.GunBeam, function(s) Config.GunBeam = s end)
 UI.CreateToggle(PageVisuals, "Big Head", Config.BigHead, function(s)
     Config.BigHead = s
     if LP.Character then
@@ -1559,16 +1386,16 @@ UI.CreateToggle(PageVisuals, "Fullbright", Config.Fullbright, function(s)
     end)
 end)
 
-print("✅ [Bloodline v2.0] Часть 5/8 — Visuals")
+print("✅ [Bloodline v2.1] Часть 5/8 — Visuals")
 
 --[[
-    BLOODLINE HUB v2.0
-    ЧАСТЬ 6/8: Target + Trade + Fun
+    BLOODLINE HUB v2.1
+    ЧАСТЬ 6/8: Target + Fun
 ]]
 
 local R = getgenv().BloodlineRefs
 local UI = getgenv().BloodlineUI
-if not R or not UI then warn("❌ Запусти Часть 1!") return end
+if not R or not UI then warn("❌ Запусти Части 1-5!") return end
 
 local LP = R.LP
 local Players = R.Players
@@ -1584,7 +1411,7 @@ local PageFun = R.Pages[6]
 local GetRole = getgenv().BloodlineGetRole
 local GetTargets = getgenv().BloodlineGetTargets
 
--- ============ TARGET ============
+-- TARGET
 UI.CreateSection(PageTarget, "🎯 ТЕЛЕПОРТ")
 
 local playerList = {}
@@ -1592,52 +1419,46 @@ for _, p in ipairs(Players:GetPlayers()) do
     if p ~= LP then table.insert(playerList, p.Name) end
 end
 if #playerList == 0 then playerList = {"—"} end
-
 local selectedPlayer = playerList[1]
 
--- Дропдаун-замена (кнопки выбора)
-local PlayerSelectFrame = Instance.new("Frame")
-PlayerSelectFrame.Size = UDim2.new(1, -10, 0, 42)
-PlayerSelectFrame.BackgroundColor3 = COLORS.card
-PlayerSelectFrame.BorderSizePixel = 0
-PlayerSelectFrame.ZIndex = 5
-PlayerSelectFrame.Parent = PageTarget
+local PSFrame = Instance.new("Frame")
+PSFrame.Size = UDim2.new(1, -10, 0, 42)
+PSFrame.BackgroundColor3 = COLORS.card
+PSFrame.BorderSizePixel = 0
+PSFrame.ZIndex = 5
+PSFrame.Parent = PageTarget
 local PSC = Instance.new("UICorner")
 PSC.CornerRadius = UDim.new(0, 8)
-PSC.Parent = PlayerSelectFrame
+PSC.Parent = PSFrame
 local PSStroke = Instance.new("UIStroke")
 PSStroke.Color = COLORS.border
 PSStroke.Thickness = 1
-PSStroke.Parent = PlayerSelectFrame
+PSStroke.Parent = PSFrame
 
 local PSBtn = Instance.new("TextButton")
 PSBtn.Size = UDim2.new(1, -20, 1, -8)
 PSBtn.Position = UDim2.new(0, 10, 0, 4)
 PSBtn.BackgroundTransparency = 1
-PSBtn.Text = "🎯 Выбрать игрока: " .. selectedPlayer
+PSBtn.Text = "🎯 Цель: " .. selectedPlayer
 PSBtn.TextColor3 = COLORS.text
 PSBtn.TextSize = 13
 PSBtn.Font = Enum.Font.GothamBold
 PSBtn.ZIndex = 6
-PSBtn.Parent = PlayerSelectFrame
+PSBtn.Parent = PSFrame
 
 PSBtn.MouseButton1Click:Connect(function()
-    -- Циклический перебор игроков
     local all = {}
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LP then table.insert(all, p.Name) end
     end
     if #all == 0 then return end
-    local found = false
     for i, n in ipairs(all) do
         if n == selectedPlayer then
             selectedPlayer = all[i % #all + 1]
-            found = true
             break
         end
     end
-    if not found then selectedPlayer = all[1] end
-    PSBtn.Text = "🎯 Выбрать игрока: " .. selectedPlayer
+    PSBtn.Text = "🎯 Цель: " .. selectedPlayer
 end)
 
 UI.CreateButton(PageTarget, "🎯 TP к цели", COLORS.accent, function()
@@ -1645,11 +1466,6 @@ UI.CreateButton(PageTarget, "🎯 TP к цели", COLORS.accent, function()
     local myHrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and myHrp then
         myHrp.CFrame = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-        pcall(function()
-            R.StarterGui:SetCore("SendNotification", {
-                Title = "🩸 Bloodline", Text = "TP к " .. selectedPlayer, Duration = 2
-            })
-        end)
     end
 end)
 
@@ -1677,112 +1493,7 @@ UI.CreateButton(PageTarget, "🏠 TP в Lobby", Color3.fromRGB(100, 180, 100), f
     end
 end)
 
--- ============ TRADE INFO ============
-UI.CreateSection(PageTarget, "💰 ИНФОРМАЦИЯ О ПРЕДМЕТАХ")
-
--- Сетка предметов игрока
-local myItemsGrid = UI.CreateItemGrid(PageTarget, "🎒 ВАШИ ПРЕДМЕТЫ (Weapons/Pets)")
-
-local function RefreshMyItems()
-    -- Очищаем
-    for _, c in ipairs(myItemsGrid:GetChildren()) do
-        if c:IsA("Frame") or c:IsA("TextButton") then c:Destroy() end
-    end
-    pcall(function()
-        local backpack = LP:FindFirstChild("Backpack")
-        if backpack then
-            for _, tool in ipairs(backpack:GetChildren()) do
-                if tool:IsA("Tool") then
-                    local itemFrame = Instance.new("Frame")
-                    itemFrame.BackgroundColor3 = Color3.fromRGB(35, 22, 30)
-                    itemFrame.BorderSizePixel = 0
-                    itemFrame.ZIndex = 7
-                    local IC = Instance.new("UICorner")
-                    IC.CornerRadius = UDim.new(0, 6)
-                    IC.Parent = itemFrame
-
-                    local NameL = Instance.new("TextLabel")
-                    NameL.Size = UDim2.new(1, -6, 1, -6)
-                    NameL.Position = UDim2.new(0, 3, 0, 3)
-                    NameL.BackgroundTransparency = 1
-                    NameL.Text = tool.Name
-                    NameL.TextColor3 = COLORS.text
-                    NameL.TextSize = 10
-                    NameL.Font = Enum.Font.GothamBold
-                    NameL.TextWrapped = true
-                    NameL.ZIndex = 8
-                    NameL.Parent = itemFrame
-
-                    itemFrame.Parent = myItemsGrid
-                end
-            end
-        end
-    end)
-end
-
-RefreshMyItems()
-task.spawn(function()
-    while myItemsGrid.Parent do
-        task.wait(2)
-        pcall(RefreshMyItems)
-    end
-end)
-
--- Инфо о трейде
-UI.CreateToggle(PageTarget, "Trade Info (показ при трейде)", Config.TradeInfo, function(s)
-    Config.TradeInfo = s
-end)
-
--- Auto-refresh items у выбранного игрока
-local theirItemsGrid = UI.CreateItemGrid(PageTarget, "👤 ПРЕДМЕТЫ СОБЕСЕДНИКА")
-
-local function RefreshTheirsItems()
-    for _, c in ipairs(theirItemsGrid:GetChildren()) do
-        if c:IsA("Frame") or c:IsA("TextButton") then c:Destroy() end
-    end
-    pcall(function()
-        local target = Players:FindFirstChild(selectedPlayer)
-        if target then
-            local backpack = target:FindFirstChild("Backpack")
-            if backpack then
-                for _, tool in ipairs(backpack:GetChildren()) do
-                    if tool:IsA("Tool") then
-                        local itemFrame = Instance.new("Frame")
-                        itemFrame.BackgroundColor3 = Color3.fromRGB(35, 22, 30)
-                        itemFrame.BorderSizePixel = 0
-                        itemFrame.ZIndex = 7
-                        local IC = Instance.new("UICorner")
-                        IC.CornerRadius = UDim.new(0, 6)
-                        IC.Parent = itemFrame
-
-                        local NameL = Instance.new("TextLabel")
-                        NameL.Size = UDim2.new(1, -6, 1, -6)
-                        NameL.Position = UDim2.new(0, 3, 0, 3)
-                        NameL.BackgroundTransparency = 1
-                        NameL.Text = tool.Name
-                        NameL.TextColor3 = COLORS.text
-                        NameL.TextSize = 10
-                        NameL.Font = Enum.Font.GothamBold
-                        NameL.TextWrapped = true
-                        NameL.ZIndex = 8
-                        NameL.Parent = itemFrame
-
-                        itemFrame.Parent = theirItemsGrid
-                    end
-                end
-            end
-        end
-    end)
-end
-
-task.spawn(function()
-    while theirItemsGrid.Parent do
-        task.wait(2)
-        pcall(RefreshTheirsItems)
-    end
-end)
-
--- ============ FUN ============
+-- FUN
 UI.CreateSection(PageFun, "😈 FLING")
 UI.CreateToggle(PageFun, "Touch Fling", Config.TouchFling, function(s) Config.TouchFling = s end)
 UI.CreateToggle(PageFun, "Click Fling", Config.ClickFling, function(s) Config.ClickFling = s end)
@@ -1813,14 +1524,16 @@ table.insert(getgenv().BloodlineConns, RunService.Heartbeat:Connect(function()
     end
     if Config.FlingMurder then
         pcall(function()
-            local targets = GetTargets(function(p) return GetRole(p) == "Murder" end)
-            for _, t in ipairs(targets) do ApplyFling(t.hrp, 500) end
+            for _, t in ipairs(GetTargets(function(p) return GetRole(p) == "Murder" end)) do
+                ApplyFling(t.hrp, 500)
+            end
         end)
     end
     if Config.FlingSheriff then
         pcall(function()
-            local targets = GetTargets(function(p) return GetRole(p) == "Sheriff" end)
-            for _, t in ipairs(targets) do ApplyFling(t.hrp, 500) end
+            for _, t in ipairs(GetTargets(function(p) return GetRole(p) == "Sheriff" end)) do
+                ApplyFling(t.hrp, 500)
+            end
         end)
     end
     if Config.TouchFling then
@@ -1882,27 +1595,26 @@ UI.CreateToggle(PageFun, "Fake Headless", Config.FakeHeadless, function(s)
     end
 end)
 
-print("✅ [Bloodline v2.0] Часть 6/8 — Target + Trade + Fun")
+print("✅ [Bloodline v2.1] Часть 6/8 — Target + Fun")
 
 --[[
-    BLOODLINE HUB v2.0
+    BLOODLINE HUB v2.1
     ЧАСТЬ 7/8: Emotes + Sound
 ]]
 
 local R = getgenv().BloodlineRefs
 local UI = getgenv().BloodlineUI
-if not R or not UI then warn("❌ Запусти Часть 1!") return end
+if not R or not UI then warn("❌ Запусти Части 1-6!") return end
 
 local LP = R.LP
 local UserInputService = R.UserInputService
 local Workspace = R.Workspace
 local COLORS = R.Colors
-local Config = R.Config
 
 local PageEmotes = R.Pages[7]
 local PageSound = R.Pages[8]
 
--- ============ EMOTES ============
+-- EMOTES
 UI.CreateSection(PageEmotes, "💃 АНИМАЦИИ")
 
 local function DoEmote(name)
@@ -1935,13 +1647,6 @@ local function DoEmote(name)
                 hrp.CFrame = hrp.CFrame * CFrame.Angles(0, 0, math.rad(-20)); task.wait(0.15)
                 hrp.CFrame = hrp.CFrame * CFrame.Angles(0, 0, math.rad(10)); task.wait(0.15)
             end
-        elseif name == "point" then
-            for i = 1, 15 do
-                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(5), 0); task.wait(0.05)
-            end
-        elseif name == "salute" then
-            hrp.CFrame = hrp.CFrame * CFrame.Angles(math.rad(-15), 0, 0); task.wait(1)
-            hrp.CFrame = hrp.CFrame * CFrame.Angles(math.rad(15), 0, 0)
         end
     end)
 end
@@ -1951,14 +1656,12 @@ UI.CreateButton(PageEmotes, "🌀 Spin", COLORS.accent, function() DoEmote("spin
 UI.CreateButton(PageEmotes, "🪑 Сидеть", COLORS.accent, function() DoEmote("sit") end)
 UI.CreateButton(PageEmotes, "🤸 Сальто", COLORS.accent, function() DoEmote("flip") end)
 UI.CreateButton(PageEmotes, "👋 Махнуть", COLORS.accent, function() DoEmote("wave") end)
-UI.CreateButton(PageEmotes, "👉 Указать", COLORS.accent, function() DoEmote("point") end)
-UI.CreateButton(PageEmotes, "🫡 Честь", COLORS.accent, function() DoEmote("salute") end)
 
--- ============ SOUND PLAYER ============
-UI.CreateSection(PageSound, "🎵 МУЗЫКАЛЬНЫЙ ПЛЕЕР")
+-- SOUND PLAYER
+UI.CreateSection(PageSound, "🎵 МУЗЫКА")
 
 local PlayerFrame = Instance.new("Frame")
-PlayerFrame.Size = UDim2.new(1, -10, 0, 200)
+PlayerFrame.Size = UDim2.new(1, -10, 0, 130)
 PlayerFrame.BackgroundColor3 = COLORS.card
 PlayerFrame.BorderSizePixel = 0
 PlayerFrame.ZIndex = 5
@@ -1971,21 +1674,9 @@ PFStroke.Color = COLORS.border
 PFStroke.Thickness = 1
 PFStroke.Parent = PlayerFrame
 
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -20, 0, 24)
-Title.Position = UDim2.new(0, 12, 0, 8)
-Title.BackgroundTransparency = 1
-Title.Text = "🩸 Вставь ID музыки (Roblox)"
-Title.TextColor3 = COLORS.text
-Title.TextSize = 12
-Title.Font = Enum.Font.GothamMedium
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.ZIndex = 6
-Title.Parent = PlayerFrame
-
 local InputFrame = Instance.new("Frame")
 InputFrame.Size = UDim2.new(1, -24, 0, 36)
-InputFrame.Position = UDim2.new(0, 12, 0, 36)
+InputFrame.Position = UDim2.new(0, 12, 0, 12)
 InputFrame.BackgroundColor3 = Color3.fromRGB(20, 12, 16)
 InputFrame.BorderSizePixel = 0
 InputFrame.ZIndex = 6
@@ -2003,7 +1694,7 @@ MusicInput.Size = UDim2.new(1, -24, 1, -8)
 MusicInput.Position = UDim2.new(0, 12, 0, 4)
 MusicInput.BackgroundTransparency = 1
 MusicInput.Text = ""
-MusicInput.PlaceholderText = "Например: 1837879082"
+MusicInput.PlaceholderText = "ID музыки (например: 1837879082)"
 MusicInput.PlaceholderColor3 = COLORS.textDim
 MusicInput.TextColor3 = COLORS.text
 MusicInput.TextSize = 13
@@ -2026,23 +1717,12 @@ local function NormalizeId(input)
     if input == "" then return nil end
     if input:match("^%d+$") then return "rbxassetid://" .. input end
     if input:match("rbxassetid://") then return input end
-    if input:match("^https?://") then
-        local id = input:match("(%d+)")
-        if id then return "rbxassetid://" .. id end
-    end
     return "rbxassetid://" .. input
 end
 
-local function PlayMusicFromInput()
+local function PlayMusic()
     local id = NormalizeId(MusicInput.Text)
-    if not id then
-        pcall(function()
-            R.StarterGui:SetCore("SendNotification", {
-                Title = "🩸 Bloodline", Text = "❌ Введи ID музыки", Duration = 2
-            })
-        end)
-        return
-    end
+    if not id then return end
     pcall(function()
         if musicInstance then musicInstance:Destroy() end
         musicInstance = Instance.new("Sound")
@@ -2056,7 +1736,7 @@ end
 
 local BtnRow = Instance.new("Frame")
 BtnRow.Size = UDim2.new(1, -24, 0, 36)
-BtnRow.Position = UDim2.new(0, 12, 0, 80)
+BtnRow.Position = UDim2.new(0, 12, 0, 58)
 BtnRow.BackgroundTransparency = 1
 BtnRow.ZIndex = 6
 BtnRow.Parent = PlayerFrame
@@ -2084,7 +1764,7 @@ local function MakeSmallBtn(text, color, callback)
     return Btn
 end
 
-MakeSmallBtn("▶ Play", Color3.fromRGB(80, 180, 100), PlayMusicFromInput)
+MakeSmallBtn("▶ Play", Color3.fromRGB(80, 180, 100), PlayMusic)
 MakeSmallBtn("⏸ Pause", Color3.fromRGB(200, 160, 60), function()
     if musicInstance then pcall(function() musicInstance:Pause() end) end
 end)
@@ -2092,10 +1772,10 @@ MakeSmallBtn("⏹ Stop", Color3.fromRGB(220, 60, 60), function()
     if musicInstance then pcall(function() musicInstance:Stop(); musicInstance:Destroy() end); musicInstance = nil end
 end)
 
--- Volume
+-- Volume слайдер
 local VolLabel = Instance.new("TextLabel")
 VolLabel.Size = UDim2.new(0, 90, 0, 20)
-VolLabel.Position = UDim2.new(0, 12, 0, 132)
+VolLabel.Position = UDim2.new(0, 12, 0, 100)
 VolLabel.BackgroundTransparency = 1
 VolLabel.Text = "🔊 Громкость"
 VolLabel.TextColor3 = COLORS.text
@@ -2105,21 +1785,9 @@ VolLabel.TextXAlignment = Enum.TextXAlignment.Left
 VolLabel.ZIndex = 6
 VolLabel.Parent = PlayerFrame
 
-local VolValue = Instance.new("TextLabel")
-VolValue.Size = UDim2.new(0, 40, 0, 20)
-VolValue.Position = UDim2.new(1, -52, 0, 132)
-VolValue.BackgroundTransparency = 1
-VolValue.Text = "50"
-VolValue.TextColor3 = COLORS.accentLight
-VolValue.TextSize = 12
-VolValue.Font = Enum.Font.GothamBold
-VolValue.TextXAlignment = Enum.TextXAlignment.Right
-VolValue.ZIndex = 6
-VolValue.Parent = PlayerFrame
-
 local VolBar = Instance.new("Frame")
-VolBar.Size = UDim2.new(1, -24, 0, 8)
-VolBar.Position = UDim2.new(0, 12, 0, 162)
+VolBar.Size = UDim2.new(0, 200, 0, 8)
+VolBar.Position = UDim2.new(0, 100, 0, 106)
 VolBar.BackgroundColor3 = Color3.fromRGB(60, 30, 40)
 VolBar.BorderSizePixel = 0
 VolBar.ZIndex = 6
@@ -2156,41 +1824,35 @@ UserInputService.InputChanged:Connect(function(input)
         local bs = VolBar.AbsoluteSize
         local rel = math.clamp((m.X - bp.X) / bs.X, 0, 1)
         VolFill.Size = UDim2.new(rel, 0, 1, 0)
-        VolValue.Text = tostring(math.floor(rel * 100))
         if musicInstance then pcall(function() musicInstance.Volume = rel end) end
     end
 end)
 
--- Быстрые пресеты
+-- Пресеты
 UI.CreateSection(PageSound, "🎼 БЫСТРЫЕ ТРЕКИ")
+UI.CreateButton(PageSound, "🩸 Lofi", COLORS.accent, function()
+    MusicInput.Text = "1837879082"; PlayMusic()
+end)
+UI.CreateButton(PageSound, "🩸 Phonk", COLORS.accent, function()
+    MusicInput.Text = "1838457666"; PlayMusic()
+end)
+UI.CreateButton(PageSound, "🩸 Anime OP", COLORS.accent, function()
+    MusicInput.Text = "1836248630"; PlayMusic()
+end)
 
-local function QuickPlay(id)
-    MusicInput.Text = id
-    PlayMusicFromInput()
-end
-
-UI.CreateButton(PageSound, "🩸 Lofi", COLORS.accent, function() QuickPlay("1837879082") end)
-UI.CreateButton(PageSound, "🩸 Phonk", COLORS.accent, function() QuickPlay("1838457666") end)
-UI.CreateButton(PageSound, "🩸 Anime OP", COLORS.accent, function() QuickPlay("1836248630") end)
-UI.CreateButton(PageSound, "🩸 Piano", COLORS.accent, function() QuickPlay("1836197175") end)
-UI.CreateButton(PageSound, "🩸 Guitar", COLORS.accent, function() QuickPlay("1837876001") end)
-
-print("✅ [Bloodline v2.0] Часть 7/8 — Emotes + Sound")
+print("✅ [Bloodline v2.1] Часть 7/8 — Emotes + Sound")
 
 --[[
-    ╔══════════════════════════════════════════╗
-    ║      BLOODLINE HUB v2.0                  ║
-    ║      ЧАСТЬ 8/8: Configs + Управление     ║
-    ╚══════════════════════════════════════════╝
+    BLOODLINE HUB v2.1
+    ЧАСТЬ 8/8: Configs + Управление
 ]]
 
 local R = getgenv().BloodlineRefs
 local UI = getgenv().BloodlineUI
-if not R or not UI then warn("❌ Запусти Части 1A-7!") return end
+if not R or not UI then warn("❌ Запусти Части 1-7!") return end
 
 local LP = R.LP
 local UserInputService = R.UserInputService
-local RunService = R.RunService
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
 local COLORS = R.Colors
@@ -2201,41 +1863,13 @@ local CloseBtn = R.CloseBtn
 local PageConfigs = R.Pages[9]
 local ESPObjects = getgenv().BloodlineESP or {}
 
--- Проверка File API
 local HAS_FILE_API = false
 pcall(function()
     HAS_FILE_API = (typeof(writefile) == "function" and typeof(readfile) == "function")
 end)
 
--- ============ ФОНОВАЯ КАРТИНКА ============
-local BgImage = Instance.new("ImageLabel")
-BgImage.Name = "BloodlineBg"
-BgImage.Size = UDim2.new(1, -20, 1, -20)
-BgImage.Position = UDim2.new(0, 10, 0, 10)
-BgImage.BackgroundTransparency = 1
-BgImage.Image = ""
-BgImage.ImageTransparency = 0.8
-BgImage.ScaleType = Enum.ScaleType.Crop
-BgImage.ZIndex = 2
-BgImage.Visible = false
-BgImage.Parent = MainFrame
-local BgCorner = Instance.new("UICorner")
-BgCorner.CornerRadius = UDim.new(0, 14)
-BgCorner.Parent = BgImage
-
-getgenv().BloodlineSetBg = function(assetId)
-    pcall(function()
-        if assetId and assetId ~= "" then
-            BgImage.Image = assetId
-            BgImage.Visible = true
-        else
-            BgImage.Visible = false
-        end
-    end)
-end
-
--- ============ ФОНЫ (выбор из 10) ============
-UI.CreateSection(PageConfigs, "🖼 ФОНЫ (выбор из 10)")
+-- ФОНЫ
+UI.CreateSection(PageConfigs, "🖼 ФОНЫ")
 
 local BACKGROUNDS = {
     {name = "1. Девушка с искрой", id = ""},
@@ -2250,49 +1884,37 @@ local BACKGROUNDS = {
     {name = "10. Зайка", id = ""},
 }
 
--- Сетка фонов (2 в ряд)
-local BgGrid = Instance.new("Frame")
-BgGrid.Size = UDim2.new(1, -10, 0, 170)
-BgGrid.BackgroundTransparency = 1
-BgGrid.ZIndex = 5
-BgGrid.Parent = PageConfigs
+local BgImage = Instance.new("ImageLabel")
+BgImage.Size = UDim2.new(1, -20, 1, -20)
+BgImage.Position = UDim2.new(0, 10, 0, 10)
+BgImage.BackgroundTransparency = 1
+BgImage.Image = ""
+BgImage.ImageTransparency = 0.8
+BgImage.ScaleType = Enum.ScaleType.Crop
+BgImage.ZIndex = 2
+BgImage.Visible = false
+BgImage.Parent = MainFrame
+local BgCorner = Instance.new("UICorner")
+BgCorner.CornerRadius = UDim.new(0, 14)
+BgCorner.Parent = BgImage
 
-local BgGridLayout = Instance.new("UIGridLayout")
-BgGridLayout.CellSize = UDim2.new(0, 250, 0, 32)
-BgGridLayout.CellPadding = UDim2.new(0, 6, 0, 6)
-BgGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-BgGridLayout.Parent = BgGrid
-
-for i, bg in ipairs(BACKGROUNDS) do
-    local Btn = Instance.new("TextButton")
-    Btn.BackgroundColor3 = Color3.fromRGB(60, 25, 40)
-    Btn.Text = "🖼 " .. bg.name
-    Btn.TextColor3 = COLORS.text
-    Btn.TextSize = 11
-    Btn.Font = Enum.Font.GothamBold
-    Btn.AutoButtonColor = false
-    Btn.ZIndex = 6
-    Btn.Parent = BgGrid
-    local BC = Instance.new("UICorner")
-    BC.CornerRadius = UDim.new(0, 6)
-    BC.Parent = Btn
-
-    Btn.MouseButton1Click:Connect(function()
-        if bg.id == "" then
-            pcall(function()
-                R.StarterGui:SetCore("SendNotification", {
-                    Title = "🩸 Bloodline",
-                    Text = "⚠ Введи ID фона в поле ниже",
-                    Duration = 3
-                })
-            end)
+local function SetBg(assetId)
+    pcall(function()
+        if assetId and assetId ~= "" then
+            BgImage.Image = assetId
+            BgImage.Visible = true
         else
-            R.BloodlineSetBg(bg.id)
+            BgImage.Visible = false
         end
     end)
 end
 
--- Поле для ввода ID фона
+for _, bg in ipairs(BACKGROUNDS) do
+    UI.CreateButton(PageConfigs, "🖼 " .. bg.name, Color3.fromRGB(60, 25, 40), function()
+        if bg.id ~= "" then SetBg(bg.id) end
+    end)
+end
+
 local BgInputFrame = Instance.new("Frame")
 BgInputFrame.Size = UDim2.new(1, -10, 0, 42)
 BgInputFrame.BackgroundColor3 = COLORS.card
@@ -2312,7 +1934,7 @@ BgInput.Size = UDim2.new(1, -20, 1, -8)
 BgInput.Position = UDim2.new(0, 10, 0, 4)
 BgInput.BackgroundTransparency = 1
 BgInput.Text = ""
-BgInput.PlaceholderText = "ID фона (rbxassetid://123...)"
+BgInput.PlaceholderText = "ID фона (rbxassetid://...)"
 BgInput.PlaceholderColor3 = COLORS.textDim
 BgInput.TextColor3 = COLORS.text
 BgInput.TextSize = 13
@@ -2323,26 +1945,17 @@ BgInput.ZIndex = 6
 BgInput.Parent = BgInputFrame
 
 BgInput.FocusLost:Connect(function()
-    if BgInput.Text ~= "" then
-        R.BloodlineSetBg(BgInput.Text)
-    end
+    if BgInput.Text ~= "" then SetBg(BgInput.Text) end
 end)
 
 UI.CreateButton(PageConfigs, "❌ Убрать фон", Color3.fromRGB(80, 30, 40), function()
-    R.BloodlineSetBg("")
+    SetBg("")
 end)
 
-UI.CreateSlider(PageConfigs, "Прозрачность фона (%)", 0, 100, 80, function(v)
-    if BgImage then
-        BgImage.ImageTransparency = v / 100
-    end
-end)
-
--- ============ СОХРАНЕНИЕ КОНФИГА ============
-UI.CreateSection(PageConfigs, "💾 СОХРАНЕНИЕ КОНФИГА")
+-- СОХРАНЕНИЕ
+UI.CreateSection(PageConfigs, "💾 КОНФИГИ")
 
 local configName = "bloodline_config"
-
 local ConfigInputFrame = Instance.new("Frame")
 ConfigInputFrame.Size = UDim2.new(1, -10, 0, 42)
 ConfigInputFrame.BackgroundColor3 = COLORS.card
@@ -2362,7 +1975,6 @@ ConfigInput.Size = UDim2.new(1, -20, 1, -8)
 ConfigInput.Position = UDim2.new(0, 10, 0, 4)
 ConfigInput.BackgroundTransparency = 1
 ConfigInput.Text = configName
-ConfigInput.PlaceholderText = "Название конфига"
 ConfigInput.PlaceholderColor3 = COLORS.textDim
 ConfigInput.TextColor3 = COLORS.text
 ConfigInput.TextSize = 13
@@ -2376,14 +1988,9 @@ ConfigInput.FocusLost:Connect(function()
     configName = ConfigInput.Text
 end)
 
-UI.CreateButton(PageConfigs, "💾 Сохранить конфиг", Color3.fromRGB(80, 180, 100), function()
+UI.CreateButton(PageConfigs, "💾 Сохранить", Color3.fromRGB(80, 180, 100), function()
     pcall(function()
-        if not HAS_FILE_API then
-            R.StarterGui:SetCore("SendNotification", {
-                Title = "🩸 Bloodline", Text = "❌ writefile недоступен", Duration = 2
-            })
-            return
-        end
+        if not HAS_FILE_API then return end
         if isfolder and not isfolder("BloodlineHub") then makefolder("BloodlineHub") end
         local path = "BloodlineHub/" .. configName .. ".json"
         local data = {}
@@ -2395,20 +2002,12 @@ UI.CreateButton(PageConfigs, "💾 Сохранить конфиг", Color3.from
             end
         end
         writefile(path, HttpService:JSONEncode(data))
-        R.StarterGui:SetCore("SendNotification", {
-            Title = "🩸 Bloodline", Text = "💾 Сохранено: " .. configName, Duration = 3
-        })
     end)
 end)
 
-UI.CreateButton(PageConfigs, "📥 Загрузить конфиг", COLORS.accent, function()
+UI.CreateButton(PageConfigs, "📥 Загрузить", COLORS.accent, function()
     pcall(function()
-        if not HAS_FILE_API then
-            R.StarterGui:SetCore("SendNotification", {
-                Title = "🩸 Bloodline", Text = "❌ readfile недоступен", Duration = 2
-            })
-            return
-        end
+        if not HAS_FILE_API then return end
         local path = "BloodlineHub/" .. configName .. ".json"
         if isfile and isfile(path) then
             local data = HttpService:JSONDecode(readfile(path))
@@ -2419,164 +2018,63 @@ UI.CreateButton(PageConfigs, "📥 Загрузить конфиг", COLORS.acce
                     Config[k] = v
                 end
             end
-            R.StarterGui:SetCore("SendNotification", {
-                Title = "🩸 Bloodline", Text = "📥 Загружено (перезапусти скрипт)", Duration = 4
-            })
-        else
-            R.StarterGui:SetCore("SendNotification", {
-                Title = "🩸 Bloodline", Text = "❌ Конфиг не найден", Duration = 2
-            })
         end
     end)
 end)
 
-UI.CreateButton(PageConfigs, "📂 Список конфигов", Color3.fromRGB(80, 40, 50), function()
-    pcall(function()
-        if not HAS_FILE_API then
-            R.StarterGui:SetCore("SendNotification", {
-                Title = "🩸 Bloodline", Text = "❌ listfiles недоступен", Duration = 2
-            })
-            return
-        end
-        if isfolder and isfolder("BloodlineHub") then
-            local list = {}
-            for _, f in ipairs(listfiles("BloodlineHub")) do
-                local n = f:match("([^/\\]+)%.json$")
-                if n then table.insert(list, n) end
-            end
-            if #list == 0 then
-                R.StarterGui:SetCore("SendNotification", {
-                    Title = "🩸 Bloodline", Text = "📂 Пусто", Duration = 2
-                })
-            else
-                R.StarterGui:SetCore("SendNotification", {
-                    Title = "🩸 Bloodline",
-                    Text = "📂 " .. table.concat(list, ", "),
-                    Duration = 5
-                })
-            end
-        else
-            R.StarterGui:SetCore("SendNotification", {
-                Title = "🩸 Bloodline", Text = "📂 Нет конфигов", Duration = 2
-            })
-        end
-    end)
-end)
-
--- ============ ДЕЙСТВИЯ ============
+-- ДЕЙСТВИЯ
 UI.CreateSection(PageConfigs, "🔧 ДЕЙСТВИЯ")
-
 UI.CreateButton(PageConfigs, "🔄 Rejoin сервер", COLORS.accent, function()
-    pcall(function()
-        TeleportService:Teleport(game.PlaceId, LP)
-    end)
+    pcall(function() TeleportService:Teleport(game.PlaceId, LP) end)
 end)
 
 UI.CreateButton(PageConfigs, "🛑 Выгрузить Hub", Color3.fromRGB(220, 60, 60), function()
     pcall(function()
-        -- Отключаем Fly если включён
         if getgenv().BloodlineStopFly then pcall(getgenv().BloodlineStopFly) end
-
-        -- Удаляем ESP
         for _, objs in pairs(ESPObjects) do
             for _, o in pairs(objs) do pcall(function() o:Remove() end) end
         end
-
-        -- Отключаем все коннекты
-        for _, c in pairs(getgenv().BloodlineConns or {}) do
-            pcall(function() c:Disconnect() end)
-        end
-
-        -- Удаляем GUI
+        for _, c in pairs(getgenv().BloodlineConns or {}) do pcall(function() c:Disconnect() end) end
         ScreenGui:Destroy()
-        getgenv().BloodlineGui = nil
         getgenv().BloodlineMenuGui = nil
         getgenv().BloodlineRefs = nil
         getgenv().BloodlineBase = nil
-
-        -- Уведомление
-        pcall(function()
-            R.StarterGui:SetCore("SendNotification", {
-                Title = "🩸 Bloodline", Text = "❌ Hub выгружен", Duration = 2
-            })
-        end)
     end)
 end)
 
--- ============ ИНФО ============
-UI.CreateSection(PageConfigs, "ℹ️ ИНФОРМАЦИЯ")
-
-local InfoFrame = Instance.new("Frame")
-InfoFrame.Size = UDim2.new(1, -10, 0, 90)
-InfoFrame.BackgroundColor3 = COLORS.card
-InfoFrame.BorderSizePixel = 0
-InfoFrame.ZIndex = 5
-InfoFrame.Parent = PageConfigs
-local IFC = Instance.new("UICorner")
-IFC.CornerRadius = UDim.new(0, 8)
-IFC.Parent = InfoFrame
-local IFStroke = Instance.new("UIStroke")
-IFStroke.Color = COLORS.border
-IFStroke.Thickness = 1
-IFStroke.Parent = InfoFrame
-
-local InfoLabel = Instance.new("TextLabel")
-InfoLabel.Size = UDim2.new(1, -20, 1, -16)
-InfoLabel.Position = UDim2.new(0, 12, 0, 8)
-InfoLabel.BackgroundTransparency = 1
-InfoLabel.Text = "🩸 Bloodline Hub v2.0\n💀 MM2 Edition\n✅ File API: " .. (HAS_FILE_API and "OK" or "НЕТ")
-InfoLabel.TextColor3 = COLORS.text
-InfoLabel.TextSize = 12
-InfoLabel.Font = Enum.Font.GothamMedium
-InfoLabel.TextXAlignment = Enum.TextXAlignment.Left
-InfoLabel.TextYAlignment = Enum.TextYAlignment.Top
-InfoLabel.ZIndex = 6
-InfoLabel.Parent = InfoFrame
-
--- ============ УПРАВЛЕНИЕ ОКНОМ ============
+-- УПРАВЛЕНИЕ
 CloseBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
 end)
 
--- Хоткеи
 table.insert(getgenv().BloodlineConns, UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
-
-    -- RightShift / F1 — показать/скрыть меню
     if input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.F1 then
         MainFrame.Visible = not MainFrame.Visible
     end
-
-    -- Delete — выгрузить
     if input.KeyCode == Enum.KeyCode.Delete then
         pcall(function()
             if getgenv().BloodlineStopFly then pcall(getgenv().BloodlineStopFly) end
             for _, objs in pairs(ESPObjects) do
                 for _, o in pairs(objs) do pcall(function() o:Remove() end) end
             end
-            for _, c in pairs(getgenv().BloodlineConns or {}) do
-                pcall(function() c:Disconnect() end)
-            end
+            for _, c in pairs(getgenv().BloodlineConns or {}) do pcall(function() c:Disconnect() end) end
             ScreenGui:Destroy()
-            getgenv().BloodlineGui = nil
             getgenv().BloodlineMenuGui = nil
             getgenv().BloodlineRefs = nil
         end)
     end
 end))
 
--- ============ ИНИЦИАЛИЗАЦИЯ ============
-if R.SwitchCategory then
-    pcall(R.SwitchCategory, 1)
-end
+-- ИНИЦИАЛИЗАЦИЯ
+if R.SwitchCategory then pcall(R.SwitchCategory, 1) end
 
--- Финальное уведомление
 task.spawn(function()
     task.wait(0.5)
     pcall(function()
         R.StarterGui:SetCore("SendNotification", {
-            Title = "🩸 BLOODLINE HUB v2.0",
-            Text = "✅ Полностью загружен! RightShift — меню",
+            Title = "🩸 BLOODLINE HUB v2.1",
+            Text = "✅ Загружен! RightShift — меню",
             Duration = 5
         })
     end)
@@ -2584,14 +2082,8 @@ end)
 
 print([[
 ╔══════════════════════════════════════════╗
-║   🩸 BLOODLINE HUB v2.0 ЗАГРУЖЕН! 🩸    ║
-║   ─────────────────────────────          ║
+║   🩸 BLOODLINE HUB v2.1 ЗАГРУЖЕН! 🩸    ║
 ║   RightShift / F1 — открыть/закрыть      ║
 ║   Delete — выгрузить                     ║
-║   ─────────────────────────────          ║
-║   Категорий: 9                           ║
-║   Функций: 40+                           ║
-║   Защита: Anti-Fling, Anti-Cheat         ║
-║   File API: ]] .. (HAS_FILE_API and "OK" or "НЕТ") .. [[
 ╚══════════════════════════════════════════╝
 ]])

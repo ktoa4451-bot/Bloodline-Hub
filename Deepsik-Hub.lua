@@ -1,7 +1,7 @@
 --[[
     ╔══════════════════════════════════════════╗
-    ║      DEEPSIK HUB v5.0 - MM2              ║
-    ║      ЧАСТЬ 1/5: Ядро + GUI (KITI style)  ║
+    ║      DEEPSIK HUB v6.0 - MM2              ║
+    ║      ЧАСТЬ 1/6: Ядро + GUI (KITI style)  ║
     ╚══════════════════════════════════════════╝
 ]]
 
@@ -17,6 +17,7 @@ local TeleportService = game:GetService("TeleportService")
 local StarterGui = game:GetService("StarterGui")
 local HttpService = game:GetService("HttpService")
 local VirtualUser = game:GetService("VirtualUser")
+local SoundService = game:GetService("SoundService")
 
 local _t = tick()
 while not Players.LocalPlayer and tick() - _t < 30 do task.wait(0.1) end
@@ -38,7 +39,8 @@ getgenv().DeepsikNoDrawing = (not Drawing)
 local DefaultConfig = {
     -- ESP
     ESP = false, RoleESP = true, SkeletonESP = false,
-    GunESP = false, Tracers = false,
+    GunESP = false, Tracers = false, HitboxExpander = false,
+    HitboxSize = 5,
     ESPColor = Color3.fromRGB(200, 130, 255),
 
     -- Notifier
@@ -46,11 +48,17 @@ local DefaultConfig = {
 
     -- Combat
     AutoPickupGun = false,
-    SilentAim = false, SilentAimFOV = 100,
+    SilentAim = false, SilentAimFOV = 100, WallCheck = false,
     KillAura = false, AuraRange = 30,
     KillOnlySheriff = false,
     KnifeAimbot = false,
     AimAssistAll = false, AimAssistAllFOV = 100,
+
+    -- MM2 Special
+    RevealRoles = false,
+    AutoWin = false,
+    SecondChance = false,
+    AutoFarmCoins = false,
 
     -- Movement
     Noclip = false, InfiniteJump = false,
@@ -61,28 +69,32 @@ local DefaultConfig = {
     Invis = false, InvisBind = false,
     SpeedHack = false, SpeedValue = 60,
     JumpPower = false, JumpValue = 120,
+    ClickTP = false,
 
-    -- Visuals (KITI style)
+    -- Visuals (KITI)
     GunModel = false, GunModelType = "BigUSP-S",
     GunBeam = false, GunBeamType = "Default",
     GunBeamColor = Color3.fromRGB(200, 130, 255),
     ChinaHat = false,
     JumpCircle = false,
     ChinaHatColor = Color3.fromRGB(255, 80, 80),
+    BigHead = false,
+    Fullbright = false,
 
     -- Auras
     Aura = "None",
 
-    -- Trolling
-    TouchFling = false, ClickFling = false,
-    FakeKorblox = false, FakeHeadless = false,
-
     -- Skybox
     CustomSky = false, SkyID = "",
+    BackgroundID = "",
+
+    -- Trolling
+    TouchFling = false, ClickFling = false,
+    FlingAll = false, FlingMurder = false, FlingSheriff = false,
+    FakeKorblox = false, FakeHeadless = false,
 
     -- Misc
-    AntiAFK = true,
-    Watermark = true,
+    AntiAFK = true, Watermark = true,
 }
 
 getgenv().DeepsikConfig = getgenv().DeepsikConfig or {}
@@ -109,11 +121,11 @@ local function Notify(text, dur)
 end
 getgenv().DeepsikNotify = Notify
 
--- ============ ПАЛИТРА (светлая, как на скрине) ============
+-- ============ ПАЛИТРА (светлая, KITI) ============
 local COLORS = {
     bg = Color3.fromRGB(245, 245, 250),
     panel = Color3.fromRGB(255, 255, 255),
-    card = Color3.fromRGB(250, 250, 255),
+    card = Color3.fromRGB(248, 248, 252),
     text = Color3.fromRGB(40, 40, 60),
     textDim = Color3.fromRGB(130, 130, 150),
     accent = Color3.fromRGB(200, 130, 255),
@@ -133,13 +145,16 @@ ScreenGui.DisplayOrder = 999
 ScreenGui.Parent = PlayerGui
 getgenv().DeepsikGui = ScreenGui
 
--- ============ WATERMARK (снизу слева) ============
-local Watermark = Instance.new("Frame")
-Watermark.Size = UDim2.new(0, 200, 0, 36)
+-- ============ WATERMARK (перетаскиваемый) ============
+local Watermark = Instance.new("TextButton")
+Watermark.Size = UDim2.new(0, 260, 0, 36)
 Watermark.Position = UDim2.new(0, 20, 1, -56)
 Watermark.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 Watermark.BackgroundTransparency = 0.05
 Watermark.BorderSizePixel = 0
+Watermark.Text = ""
+Watermark.Active = true
+Watermark.Draggable = true
 Watermark.ZIndex = 20
 Watermark.Parent = ScreenGui
 
@@ -179,8 +194,13 @@ task.spawn(function()
     end))
     while Watermark.Parent do
         pcall(function()
-            local ping = math.floor(LP:GetNetworkPing() * 1000)
-            WMLabel.Text = string.format("📶 %d fps  📡 %d ms  🔫 DEEPSIK", fps, ping)
+            if Config.Watermark then
+                Watermark.Visible = true
+                local ping = math.floor(LP:GetNetworkPing() * 1000)
+                WMLabel.Text = string.format("📶 %d fps  📡 %d ms  🔫 DEEPSIK", fps, ping)
+            else
+                Watermark.Visible = false
+            end
         end)
         task.wait(0.5)
     end
@@ -188,8 +208,8 @@ end)
 
 -- ============ ГЛАВНОЕ ОКНО ============
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 720, 0, 480)
-MainFrame.Position = UDim2.new(0.5, -360, 0.5, -240)
+MainFrame.Size = UDim2.new(0, 760, 0, 500)
+MainFrame.Position = UDim2.new(0.5, -380, 0.5, -250)
 MainFrame.BackgroundColor3 = COLORS.bg
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -207,9 +227,9 @@ MainStroke.Color = COLORS.border
 MainStroke.Thickness = 1.5
 MainStroke.Parent = MainFrame
 
--- ===== ВЕРХНЯЯ ПАНЕЛЬ (лого + название + кнопки) =====
+-- ===== ВЕРХНЯЯ ПАНЕЛЬ =====
 local TopBar = Instance.new("Frame")
-TopBar.Size = UDim2.new(1, 0, 0, 55)
+TopBar.Size = UDim2.new(1, 0, 0, 58)
 TopBar.BackgroundColor3 = COLORS.panel
 TopBar.BorderSizePixel = 0
 TopBar.ZIndex = 3
@@ -227,35 +247,36 @@ TopMask.BorderSizePixel = 0
 TopMask.ZIndex = 3
 TopMask.Parent = TopBar
 
--- Лого (иконка)
 local Logo = Instance.new("TextLabel")
-Logo.Size = UDim2.new(0, 50, 0, 50)
+Logo.Size = UDim2.new(0, 52, 0, 52)
 Logo.Position = UDim2.new(0, 15, 0, 3)
 Logo.BackgroundTransparency = 1
 Logo.Text = "💀"
-Logo.TextSize = 32
+Logo.TextSize = 34
 Logo.Font = Enum.Font.GothamBold
 Logo.ZIndex = 4
 Logo.Parent = TopBar
 
--- Название
 local BrandName = Instance.new("TextLabel")
-BrandName.Size = UDim2.new(0, 200, 0, 30)
-BrandName.Position = UDim2.new(0, 65, 0, 8)
+BrandName.Size = UDim2.new(0, 250, 0, 30)
+BrandName.Position = UDim2.new(0, 70, 0, 8)
 BrandName.BackgroundTransparency = 1
 BrandName.Text = "DEEPSIK"
 BrandName.TextColor3 = COLORS.text
-BrandName.TextSize = 20
+BrandName.TextSize = 21
 BrandName.Font = Enum.Font.GothamBold
 BrandName.TextXAlignment = Enum.TextXAlignment.Left
 BrandName.ZIndex = 4
 BrandName.Parent = TopBar
 
+local SubBrand = UNKNOWN -- placeholder
+
+-- Исправляем (нельзя создавать до этого)
 local SubBrand = Instance.new("TextLabel")
-SubBrand.Size = UDim2.new(0, 200, 0, 18)
-SubBrand.Position = UDim2.new(0, 65, 0, 30)
+SubBrand.Size = UDim2.new(0, 250, 0, 18)
+SubBrand.Position = UDim2.new(0, 70, 0, 32)
 SubBrand.BackgroundTransparency = 1
-SubBrand.Text = "v5.0 • MM2 Hub"
+SubBrand.Text = "v6.0 • KITI Edition"
 SubBrand.TextColor3 = COLORS.textDim
 SubBrand.TextSize = 11
 SubBrand.Font = Enum.Font.Gotham
@@ -263,7 +284,6 @@ SubBrand.TextXAlignment = Enum.TextXAlignment.Left
 SubBrand.ZIndex = 4
 SubBrand.Parent = TopBar
 
--- Разделительная линия
 local Divider = Instance.new("Frame")
 Divider.Size = UDim2.new(1, -30, 0, 1)
 Divider.Position = UDim2.new(0, 15, 1, -1)
@@ -272,10 +292,9 @@ Divider.BorderSizePixel = 0
 Divider.ZIndex = 4
 Divider.Parent = TopBar
 
--- Кнопка закрытия
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 32, 0, 32)
-CloseBtn.Position = UDim2.new(1, -42, 0, 12)
+CloseBtn.Position = UDim2.new(1, -42, 0, 13)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 245, 245)
 CloseBtn.Text = "✕"
 CloseBtn.TextColor3 = Color3.fromRGB(220, 80, 80)
@@ -299,10 +318,52 @@ CloseBtn.MouseLeave:Connect(function()
     }):Play()
 end)
 
--- ===== САЙДБАР (категории слева) =====
+-- ===== АВАТАР ИГРОКА (в углу) =====
+local AvatarFrame = Instance.new("Frame")
+AvatarFrame.Size = UDim2.new(0, 90, 0, 90)
+AvatarFrame.Position = UDim2.new(1, -105, 0, 70)
+AvatarFrame.BackgroundColor3 = Color3.fromRGB(240, 235, 255)
+AvatarFrame.BorderSizePixel = 0
+AvatarFrame.ZIndex = 4
+AvatarFrame.Parent = MainFrame
+
+local AvatarCorner = Instance.new("UICorner")
+AvatarCorner.CornerRadius = UDim.new(0, 12)
+AvatarCorner.Parent = AvatarFrame
+
+local AvatarStroke = Instance.new("UIStroke")
+AvatarStroke.Color = COLORS.accent
+AvatarStroke.Thickness = 2
+AvatarStroke.Parent = AvatarFrame
+
+local AvatarImage = Instance.new("ImageLabel")
+AvatarImage.Size = UDim2.new(1, -8, 1, -8)
+AvatarImage.Position = UDim2.new(0, 4, 0, 4)
+AvatarImage.BackgroundTransparency = 1
+AvatarImage.Image = ""
+AvatarImage.ZIndex = 5
+AvatarImage.Parent = AvatarFrame
+
+local AvatarImageCorner = Instance.new("UICorner")
+AvatarImageCorner.CornerRadius = UDim.new(0, 10)
+AvatarImageCorner.Parent = AvatarImage
+
+-- Загрузка аватара
+task.spawn(function()
+    pcall(function()
+        local thumb = Players:GetUserThumbnailAsync(
+            LP.UserId,
+            Enum.ThumbnailType.HeadShot,
+            Enum.ThumbnailSize.Size150x150
+        )
+        AvatarImage.Image = thumb
+    end)
+end)
+
+-- ===== САЙДБАР =====
 local SideBar = Instance.new("Frame")
-SideBar.Size = UDim2.new(0, 150, 1, -85)
-SideBar.Position = UDim2.new(0, 15, 0, 70)
+SideBar.Size = UDim2.new(0, 155, 1, -88)
+SideBar.Position = UDim2.new(0, 15, 0, 72)
 SideBar.BackgroundColor3 = COLORS.panel
 SideBar.BorderSizePixel = 0
 SideBar.ZIndex = 3
@@ -336,10 +397,10 @@ SideLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     SideScroll.CanvasSize = UDim2.new(0, 0, 0, SideLayout.AbsoluteContentSize.Y + 10)
 end)
 
--- ===== ОБЛАСТЬ ПОДКАТЕГОРИЙ (сверху контента) =====
+-- ===== ПОДКАТЕГОРИИ =====
 local SubTabBar = Instance.new("Frame")
-SubTabBar.Size = UDim2.new(1, -190, 0, 40)
-SubTabBar.Position = UDim2.new(0, 175, 0, 70)
+SubTabBar.Size = UDim2.new(1, -195, 0, 40)
+SubTabBar.Position = UDim2.new(0, 180, 0, 72)
 SubTabBar.BackgroundColor3 = COLORS.panel
 SubTabBar.BorderSizePixel = 0
 SubTabBar.ZIndex = 3
@@ -371,10 +432,10 @@ SubTabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     SubTabScroll.CanvasSize = UDim2.new(0, SubTabLayout.AbsoluteContentSize.X + 10, 0, 0)
 end)
 
--- ===== ОБЛАСТЬ КОНТЕНТА =====
+-- ===== КОНТЕНТ =====
 local ContentFrame = Instance.new("Frame")
-ContentFrame.Size = UDim2.new(1, -190, 1, -140)
-ContentFrame.Position = UDim2.new(0, 175, 0, 118)
+ContentFrame.Size = UDim2.new(1, -195, 1, -145)
+ContentFrame.Position = UDim2.new(0, 180, 0, 120)
 ContentFrame.BackgroundColor3 = COLORS.panel
 ContentFrame.BorderSizePixel = 0
 ContentFrame.ClipsDescendants = true
@@ -390,21 +451,37 @@ ContentStroke.Color = COLORS.border
 ContentStroke.Thickness = 1
 ContentStroke.Parent = ContentFrame
 
--- ===== ФОНОВАЯ КАРТИНКА (аниме, как на скрине) =====
--- Она полупрозрачная, в правом верхнем углу
+-- ===== ФОНОВАЯ КАРТИНКА =====
 local BgImage = Instance.new("ImageLabel")
-BgImage.Size = UDim2.new(0, 400, 0, 400)
-BgImage.Position = UDim2.new(1, -400, 0, 55)
+BgImage.Size = UDim2.new(1, -20, 1, -20)
+BgImage.Position = UDim2.new(0, 10, 0, 10)
 BgImage.BackgroundTransparency = 1
-BgImage.Image = "rbxassetid://0" -- Замени на свою картинку (аниме)
-BgImage.ImageTransparency = 0.7
-BgImage.ZIndex = 1
+BgImage.Image = "" -- сюда грузится ID
+BgImage.ImageTransparency = 0.75
+BgImage.ScaleType = Enum.ScaleType.Crop
+BgImage.ZIndex = 2
 BgImage.Parent = MainFrame
+
+local BgCorner = Instance.new("UICorner")
+BgCorner.CornerRadius = UDim.new(0, 14)
+BgCorner.Parent = BgImage
+
+-- Обновление фона
+getgenv().DeepsikSetBg = function(assetId)
+    pcall(function()
+        if assetId and assetId ~= "" then
+            BgImage.Image = assetId
+            BgImage.Visible = true
+        else
+            BgImage.Visible = false
+        end
+    end)
+end
 
 -- ===== ПЛАВАЮЩАЯ КНОПКА =====
 local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, 120, 0, 42)
-ToggleBtn.Position = UDim2.new(0.5, -60, 1, -70)
+ToggleBtn.Size = UDim2.new(0, 130, 0, 44)
+ToggleBtn.Position = UDim2.new(0.5, -65, 1, -72)
 ToggleBtn.BackgroundColor3 = COLORS.accent
 ToggleBtn.Text = "💀 DEEPSIK"
 ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -424,24 +501,27 @@ getgenv().DeepsikRefs = {
     ScreenGui = ScreenGui, MainFrame = MainFrame,
     TopBar = TopBar, SideBar = SideBar, SideScroll = SideScroll,
     SubTabBar = SubTabBar, SubTabScroll = SubTabScroll,
-    ContentFrame = ContentFrame,
+    ContentFrame = ContentFrame, BgImage = BgImage,
+    AvatarFrame = AvatarFrame, AvatarImage = AvatarImage,
     CloseBtn = CloseBtn, ToggleBtn = ToggleBtn,
     Watermark = Watermark, WMLabel = WMLabel,
     Colors = COLORS,
     TweenService = TweenService, Players = Players, RunService = RunService,
     UserInputService = UserInputService, Lighting = Lighting, Workspace = Workspace,
     TeleportService = TeleportService, StarterGui = StarterGui,
-    HttpService = HttpService, VirtualUser = VirtualUser,
+    HttpService = HttpService, VirtualUser = VirtualUser, SoundService = SoundService,
     LocalPlayer = LP, Camera = Camera, Config = Config, Notify = Notify,
 }
 
-print("✅ [Deepsik v5.0] Часть 1/5 — Ядро + GUI (KITI style)")
-Notify("⏳ Загрузка 1/5...", 1)
+print("✅ [Deepsik v6.0] Часть 1/6 — Ядро + GUI (KITI style)")
+Notify("⏳ Загрузка 1/6...", 1)
 
 --[[
     ╔══════════════════════════════════════════╗
-    ║      DEEPSIK HUB v5.0                    ║
-    ║      ЧАСТЬ 2/5: UI-компоненты            ║
+    ║      DEEPSIK HUB v6.0                    ║
+    ║      ЧАСТЬ 2A: Базовые компоненты        ║
+    ║      (Category, SubTab, Page, Section,   ║
+    ║       Card, Toggle, Slider)              ║
     ╚══════════════════════════════════════════╝
 ]]
 
@@ -488,10 +568,10 @@ local function CreateCategory(name, icon)
     return Cat
 end
 
--- ============ ПОДКАТЕГОРИЯ (табы сверху) ============
+-- ============ ПОДКАТЕГОРИЯ ============
 local function CreateSubTab(name, icon)
     local Tab = Instance.new("TextButton")
-    Tab.Size = UDim2.new(0, 110, 0, 28)
+    Tab.Size = UDim2.new(0, 120, 0, 28)
     Tab.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
     Tab.Text = (icon and (icon .. " ") or "") .. name
     Tab.TextColor3 = COLORS.text
@@ -529,7 +609,7 @@ local function CreatePage(parent)
     return Page
 end
 
--- ============ СЕКЦИЯ (заголовок) ============
+-- ============ СЕКЦИЯ ============
 local function CreateSection(parent, text)
     local Frame = Instance.new("Frame")
     Frame.Size = UDim2.new(1, -10, 0, 32)
@@ -563,8 +643,7 @@ local function CreateSection(parent, text)
     return Frame
 end
 
--- ============ КАРТОЧКА С ФУНКЦИЕЙ (как на скрине) ============
--- Название слева, справа: цвет, шестерёнка, тумблер
+-- ============ КАРТОЧКА (KITI-style) ============
 local function CreateCard(parent, text, opts)
     opts = opts or {}
     local hasColor = opts.hasColor
@@ -572,7 +651,7 @@ local function CreateCard(parent, text, opts)
     local hasToggle = opts.hasToggle ~= false
 
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, -10, 0, 42)
+    Frame.Size = UDim2.new(1, -10, 0, 44)
     Frame.BackgroundColor3 = Color3.fromRGB(248, 248, 252)
     Frame.BorderSizePixel = 0
     Frame.ZIndex = 5
@@ -587,7 +666,7 @@ local function CreateCard(parent, text, opts)
     Stroke.Parent = Frame
 
     local Label = Instance.new("TextLabel")
-    Label.Size = UDim2.new(1, -140, 1, 0)
+    Label.Size = UDim2.new(1, -160, 1, 0)
     Label.Position = UDim2.new(0, 14, 0, 0)
     Label.BackgroundTransparency = 1
     Label.Text = text
@@ -600,7 +679,7 @@ local function CreateCard(parent, text, opts)
 
     local rightOffset = -14
 
-    -- Тумблер (справа)
+    -- Тумблер
     if hasToggle then
         local ToggleBg = Instance.new("Frame")
         ToggleBg.Size = UDim2.new(0, 38, 0, 20)
@@ -646,7 +725,7 @@ local function CreateCard(parent, text, opts)
         rightOffset = rightOffset - 50
     end
 
-    -- Шестерёнка (настройки)
+    -- Шестерёнка
     if hasSettings then
         local SettingsBtn = Instance.new("TextButton")
         SettingsBtn.Size = UDim2.new(0, 26, 0, 26)
@@ -668,7 +747,7 @@ local function CreateCard(parent, text, opts)
         rightOffset = rightOffset - 34
     end
 
-    -- Цветной квадрат (превью цвета)
+    -- Цвет
     if hasColor then
         local ColorBox = Instance.new("TextButton")
         ColorBox.Size = UDim2.new(0, 34, 0, 22)
@@ -689,7 +768,7 @@ local function CreateCard(parent, text, opts)
     return Frame
 end
 
--- ============ ТУМБЛЕР (простой) ============
+-- ============ ТУМБЛЕР ============
 local function CreateToggle(parent, text, default, callback)
     return CreateCard(parent, text, {
         hasToggle = true,
@@ -701,7 +780,7 @@ end
 -- ============ СЛАЙДЕР ============
 local function CreateSlider(parent, text, min, max, default, callback)
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, -10, 0, 52)
+    Frame.Size = UDim2.new(1, -10, 0, 54)
     Frame.BackgroundColor3 = Color3.fromRGB(248, 248, 252)
     Frame.BorderSizePixel = 0
     Frame.ZIndex = 5
@@ -741,7 +820,7 @@ local function CreateSlider(parent, text, min, max, default, callback)
 
     local Bar = Instance.new("Frame")
     Bar.Size = UDim2.new(1, -28, 0, 8)
-    Bar.Position = UDim2.new(0, 14, 0, 34)
+    Bar.Position = UDim2.new(0, 14, 0, 36)
     Bar.BackgroundColor3 = Color3.fromRGB(230, 230, 240)
     Bar.BorderSizePixel = 0
     Bar.ZIndex = 6
@@ -786,10 +865,42 @@ local function CreateSlider(parent, text, min, max, default, callback)
     return Frame
 end
 
+-- ============ ЭКСПОРТ (часть 1) ============
+getgenv().DeepsikUI = getgenv().DeepsikUI or {}
+local UI = getgenv().DeepsikUI
+
+UI.CreateCategory = CreateCategory
+UI.CreateSubTab = CreateSubTab
+UI.CreatePage = CreatePage
+UI.CreateSection = CreateSection
+UI.CreateCard = CreateCard
+UI.CreateToggle = CreateToggle
+UI.CreateSlider = CreateSlider
+
+print("✅ [Deepsik v6.0] Часть 2A — Базовые компоненты")
+R.Notify("⏳ Загрузка 2A...", 1)
+
+--[[
+    ╔══════════════════════════════════════════╗
+    ║      DEEPSIK HUB v6.0                    ║
+    ║      ЧАСТЬ 2B: Доп. компоненты           ║
+    ║      (Button, Input, Dropdown,           ║
+    ║       ColorPicker)                       ║
+    ╚══════════════════════════════════════════╝
+]]
+
+local R = getgenv().DeepsikRefs
+local UI = getgenv().DeepsikUI
+if not R or not UI then warn("❌ Запусти Части 1 и 2A!") return end
+
+local TweenService = R.TweenService
+local UserInputService = R.UserInputService
+local COLORS = R.Colors
+
 -- ============ КНОПКА ============
 local function CreateButton(parent, text, color, callback)
     local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(1, -10, 0, 38)
+    Btn.Size = UDim2.new(1, -10, 0, 40)
     Btn.BackgroundColor3 = color or COLORS.accent
     Btn.Text = text
     Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -827,7 +938,7 @@ end
 -- ============ ИНПУТ ============
 local function CreateInput(parent, placeholder, default, callback)
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, -10, 0, 38)
+    Frame.Size = UDim2.new(1, -10, 0, 40)
     Frame.BackgroundColor3 = Color3.fromRGB(248, 248, 252)
     Frame.BorderSizePixel = 0
     Frame.ZIndex = 5
@@ -865,7 +976,7 @@ end
 -- ============ ДРОПДАУН ============
 local function CreateDropdown(parent, text, options, default, callback)
     local Frame = Instance.new("Frame")
-    Frame.Size = UDim2.new(1, -10, 0, 42)
+    Frame.Size = UDim2.new(1, -10, 0, 44)
     Frame.BackgroundColor3 = Color3.fromRGB(248, 248, 252)
     Frame.BorderSizePixel = 0
     Frame.ClipsDescendants = true
@@ -894,7 +1005,7 @@ local function CreateDropdown(parent, text, options, default, callback)
 
     local Selected = Instance.new("TextButton")
     Selected.Size = UDim2.new(0.5, -14, 0, 30)
-    Selected.Position = UDim2.new(0.5, 0, 0, 6)
+    Selected.Position = UDim2.new(0.5, 0, 0, 7)
     Selected.BackgroundColor3 = Color3.fromRGB(240, 240, 248)
     Selected.Text = default or options[1] or "—"
     Selected.TextColor3 = COLORS.text
@@ -912,13 +1023,13 @@ local function CreateDropdown(parent, text, options, default, callback)
     Selected.MouseButton1Click:Connect(function()
         open = not open
         for _, of in ipairs(optionFrames) do of.Visible = open end
-        Frame.Size = open and UDim2.new(1, -10, 0, 42 + #options * 30) or UDim2.new(1, -10, 0, 42)
+        Frame.Size = open and UDim2.new(1, -10, 0, 44 + #options * 30) or UDim2.new(1, -10, 0, 44)
     end)
 
     for i, opt in ipairs(options) do
         local OptBtn = Instance.new("TextButton")
         OptBtn.Size = UDim2.new(1, -14, 0, 26)
-        OptBtn.Position = UDim2.new(0, 7, 0, 42 + (i - 1) * 30)
+        OptBtn.Position = UDim2.new(0, 7, 0, 44 + (i - 1) * 30)
         OptBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 248)
         OptBtn.Text = opt
         OptBtn.TextColor3 = COLORS.text
@@ -935,7 +1046,7 @@ local function CreateDropdown(parent, text, options, default, callback)
             Selected.Text = opt
             open = false
             for _, of in ipairs(optionFrames) do of.Visible = false end
-            Frame.Size = UDim2.new(1, -10, 0, 42)
+            Frame.Size = UDim2.new(1, -10, 0, 44)
             if callback then pcall(callback, opt) end
         end)
         table.insert(optionFrames, OptBtn)
@@ -943,27 +1054,159 @@ local function CreateDropdown(parent, text, options, default, callback)
     return Frame
 end
 
--- ============ ЭКСПОРТ ============
-getgenv().DeepsikUI = {
-    CreateCategory = CreateCategory,
-    CreateSubTab = CreateSubTab,
-    CreatePage = CreatePage,
-    CreateSection = CreateSection,
-    CreateCard = CreateCard,
-    CreateToggle = CreateToggle,
-    CreateSlider = CreateSlider,
-    CreateButton = CreateButton,
-    CreateInput = CreateInput,
-    CreateDropdown = CreateDropdown,
-}
+-- ============ COLOR PICKER ============
+local function CreateColorPicker(parent, text, default, callback)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, -10, 0, 44)
+    Frame.BackgroundColor3 = Color3.fromRGB(248, 248, 252)
+    Frame.BorderSizePixel = 0
+    Frame.ClipsDescendants = true
+    Frame.ZIndex = 5
+    Frame.Parent = parent
+    local C = Instance.new("UICorner")
+    C.CornerRadius = UDim.new(0, 8)
+    C.Parent = Frame
 
-print("✅ [Deepsik v5.0] Часть 2/5 — UI-компоненты")
-R.Notify("⏳ Загрузка 2/5...", 1)
+    local Stroke = Instance.new("UIStroke")
+    Stroke.Color = COLORS.border
+    Stroke.Thickness = 1
+    Stroke.Parent = Frame
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(1, -80, 1, 0)
+    Label.Position = UDim2.new(0, 14, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = text
+    Label.TextColor3 = COLORS.text
+    Label.TextSize = 13
+    Label.Font = Enum.Font.GothamMedium
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.ZIndex = 6
+    Label.Parent = Frame
+
+    local Preview = Instance.new("TextButton")
+    Preview.Size = UDim2.new(0, 48, 0, 26)
+    Preview.Position = UDim2.new(1, -60, 0.5, -13)
+    Preview.BackgroundColor3 = default
+    Preview.Text = ""
+    Preview.ZIndex = 6
+    Preview.Parent = Frame
+    local PC = Instance.new("UICorner")
+    PC.CornerRadius = UDim.new(0, 6)
+    PC.Parent = Preview
+
+    local state = {R = default.R, G = default.G, B = default.B}
+    local open = false
+
+    local Panel = Instance.new("Frame")
+    Panel.Size = UDim2.new(1, -14, 0, 130)
+    Panel.Position = UDim2.new(0, 7, 0, 44)
+    Panel.BackgroundColor3 = Color3.fromRGB(245, 245, 250)
+    Panel.BorderSizePixel = 0
+    Panel.Visible = false
+    Panel.ZIndex = 6
+    Panel.Parent = Frame
+    local PanC = Instance.new("UICorner")
+    PanC.CornerRadius = UDim.new(0, 6)
+    PanC.Parent = Panel
+
+    local function makeSlider(label, val, yPos, key)
+        local Lbl = Instance.new("TextLabel")
+        Lbl.Size = UDim2.new(0, 20, 0, 26)
+        Lbl.Position = UDim2.new(0, 8, 0, yPos)
+        Lbl.BackgroundTransparency = 1
+        Lbl.Text = label
+        Lbl.TextColor3 = COLORS.text
+        Lbl.TextSize = 12
+        Lbl.Font = Enum.Font.GothamBold
+        Lbl.ZIndex = 7
+        Lbl.Parent = Panel
+
+        local Bar = Instance.new("Frame")
+        Bar.Size = UDim2.new(1, -70, 0, 14)
+        Bar.Position = UDim2.new(0, 30, 0, yPos + 6)
+        Bar.BackgroundColor3 = Color3.fromRGB(220, 220, 230)
+        Bar.BorderSizePixel = 0
+        Bar.ZIndex = 7
+        Bar.Parent = Panel
+        local BC = Instance.new("UICorner")
+        BC.CornerRadius = UDim.new(1, 0)
+        BC.Parent = Bar
+
+        local Fill = Instance.new("Frame")
+        Fill.Size = UDim2.new(val, 0, 1, 0)
+        Fill.BackgroundColor3 = key == "R" and Color3.fromRGB(255, 80, 80) or (key == "G" and Color3.fromRGB(80, 255, 80) or Color3.fromRGB(80, 80, 255))
+        Fill.BorderSizePixel = 0
+        Fill.ZIndex = 8
+        Fill.Parent = Bar
+        local FC = Instance.new("UICorner")
+        FC.CornerRadius = UDim.new(1, 0)
+        FC.Parent = Fill
+
+        local Val = Instance.new("TextLabel")
+        Val.Size = UDim2.new(0, 30, 1, 0)
+        Val.Position = UDim2.new(1, -35, 0, 0)
+        Val.BackgroundTransparency = 1
+        Val.Text = tostring(math.floor(val * 255))
+        Val.TextColor3 = COLORS.text
+        Val.TextSize = 11
+        Val.Font = Enum.Font.GothamBold
+        Val.ZIndex = 7
+        Val.Parent = Bar
+
+        local drag = false
+        Bar.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                drag = true
+            end
+        end)
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                drag = false
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(input)
+            if drag and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+                local m = UserInputService:GetMouseLocation()
+                local bp = Bar.AbsolutePosition
+                local bs = Bar.AbsoluteSize
+                local rel = math.clamp((m.X - bp.X) / bs.X, 0, 1)
+                Fill.Size = UDim2.new(rel, 0, 1, 0)
+                Val.Text = tostring(math.floor(rel * 255))
+                state[key] = rel
+                local newCol = Color3.fromRGB(state.R * 255, state.G * 255, state.B * 255)
+                Preview.BackgroundColor3 = newCol
+                if callback then pcall(callback, newCol) end
+            end
+        end)
+    end
+
+    makeSlider("R", default.R, 8, "R")
+    makeSlider("G", default.G, 46, "G")
+    makeSlider("B", default.B, 84, "B")
+
+    Preview.MouseButton1Click:Connect(function()
+        open = not open
+        Panel.Visible = open
+        Frame.Size = open and UDim2.new(1, -10, 0, 44 + 130) or UDim2.new(1, -10, 0, 44)
+    end)
+
+    return Frame
+end
+
+-- ============ ЭКСПОРТ (часть 2) ============
+UI.CreateButton = CreateButton
+UI.CreateInput = CreateInput
+UI.CreateDropdown = CreateDropdown
+UI.CreateColorPicker = CreateColorPicker
+
+print("✅ [Deepsik v6.0] Часть 2B — Доп. компоненты")
+R.Notify("⏳ Загрузка 2B...", 1)
 
 --[[
     ╔══════════════════════════════════════════╗
-    ║      DEEPSIK HUB v5.0                    ║
-    ║      ЧАСТЬ 3/5: Home, General, MM2       ║
+    ║      DEEPSIK HUB v6.0                    ║
+    ║      ЧАСТЬ 3/6: Home, General, MM2       ║
     ╚══════════════════════════════════════════╝
 ]]
 
@@ -975,6 +1218,7 @@ local Config = R.Config
 local LP = R.LocalPlayer
 local Players = R.Players
 local ContentFrame = R.ContentFrame
+local SubTabScroll = R.SubTabScroll
 
 -- ============ ХЕЛПЕРЫ ============
 local function GetChar()
@@ -1031,7 +1275,7 @@ local function GetEquippedTool()
 end
 getgenv().DeepsikGetTool = GetEquippedTool
 
--- ============ КАТЕГОРИИ (как на скрине) ============
+-- ============ КАТЕГОРИИ (KITI-стиль) ============
 local CatHome = UI.CreateCategory("Home", "🏠")
 local CatGeneral = UI.CreateCategory("General", "⚙")
 local CatMM2 = UI.CreateCategory("MM2", "🔫")
@@ -1090,20 +1334,17 @@ R.SwitchCategory = SwitchCategory
 -- ==================================================================
 -- HOME
 -- ==================================================================
-UI.CreateSection(PageHome, "👋 Добро пожаловать в Deepsik Hub")
-UI.CreateSection(PageHome, "💀 Версия: v5.0")
-UI.CreateSection(PageHome, "🎨 Стиль: KITI-like")
-UI.CreateSection(PageHome, "⌨ RightShift / F1 — меню")
-UI.CreateSection(PageHome, "⌨ Delete — выгрузить")
+UI.CreateSection(PageHome, "👋 Добро пожаловать в Deepsik Hub v6.0")
+UI.CreateSection(PageHome, "🎨 Стиль: KITI Edition")
 
-local InfoCard = UI.CreateCard(PageHome, "💙 Сделано с любовью для MM2", {
+local InfoCard = UI.CreateCard(PageHome, "💙 Made with love for MM2", {
     hasToggle = false,
 })
-InfoCard.Size = UDim2.new(1, -10, 0, 50)
+InfoCard.Size = UDim2.new(1, -10, 0, 52)
 
 UI.CreateSection(PageHome, "📊 СТАТИСТИКА")
 local StatsFrame = Instance.new("Frame")
-StatsFrame.Size = UDim2.new(1, -10, 0, 90)
+StatsFrame.Size = UDim2.new(1, -10, 0, 100)
 StatsFrame.BackgroundColor3 = Color3.fromRGB(248, 248, 252)
 StatsFrame.BorderSizePixel = 0
 StatsFrame.ZIndex = 5
@@ -1132,24 +1373,29 @@ task.spawn(function()
     while StLabel.Parent do
         pcall(function()
             StLabel.Text = string.format(
-                "👥 Игроков: %d\n📡 Ping: %d ms\n💀 Debug: OK\n💙 Deepsik Hub v5.0",
+                "👥 Игроков: %d\n📡 Ping: %d ms\n🎭 Роль: %s\n💙 Deepsik Hub v6.0 (KITI)",
                 #Players:GetPlayers(),
-                math.floor(LP:GetNetworkPing() * 1000)
+                math.floor(LP:GetNetworkPing() * 1000),
+                GetRole(LP)
             )
         end)
         task.wait(1)
     end
 end)
 
+UI.CreateSection(PageHome, "⌨ ХОТКЕИ")
+UI.CreateSection(PageHome, "RightShift / F1 — открыть меню")
+UI.CreateSection(PageHome, "Delete — выгрузить")
+UI.CreateSection(PageHome, "G — Invis Bind")
+
 -- ==================================================================
 -- GENERAL
 -- ==================================================================
-UI.CreateSection(PageGeneral, "⚙ ОБЩИЕ НАСТРОЙКИ")
+UI.CreateSection(PageGeneral, "⚙ ОБЩИЕ")
 
 UI.CreateToggle(PageGeneral, "Anti-AFK", Config.AntiAFK, function(s) Config.AntiAFK = s end)
 UI.CreateToggle(PageGeneral, "Watermark (FPS/Ping)", Config.Watermark, function(s)
     Config.Watermark = s
-    R.Watermark.Visible = s
 end)
 
 UI.CreateSection(PageGeneral, "🎨 ТЕМА")
@@ -1158,17 +1404,29 @@ UI.CreateDropdown(PageGeneral, "Стиль UI", {"Light (KITI)", "Dark", "Auto"}
 end)
 
 -- ==================================================================
--- MM2
+-- MM2 (главные функции)
 -- ==================================================================
-UI.CreateSection(PageMM2, "🔫 MM2 ФУНКЦИИ")
+UI.CreateSection(PageMM2, "🔫 AUTO")
 
 UI.CreateToggle(PageMM2, "Auto Pickup Gun", Config.AutoPickupGun, function(s) Config.AutoPickupGun = s end)
 UI.CreateToggle(PageMM2, "Silent Aim", Config.SilentAim, function(s) Config.SilentAim = s end)
 UI.CreateSlider(PageMM2, "Silent Aim FOV", 10, 500, Config.SilentAimFOV, function(v) Config.SilentAimFOV = v end)
-UI.CreateToggle(PageMM2, "Kill Aura", Config.KillAura, function(s) Config.KillAura = s end)
-UI.CreateSlider(PageMM2, "Kill Aura Radius", 5, 100, Config.AuraRange, function(v) Config.AuraRange = v end)
-UI.CreateToggle(PageMM2, "Kill Only Sheriff", Config.KillOnlySheriff, function(s) Config.KillOnlySheriff = s end)
-UI.CreateToggle(PageMM2, "Knife Aimbot", Config.KnifeAimbot, function(s) Config.KnifeAimbot = s end)
+UI.CreateToggle(PageMM2, "Wall Check (только через стены)", Config.WallCheck, function(s) Config.WallCheck = s end)
+
+UI.CreateSection(PageMM2, "🎭 MM2 SPECIAL")
+UI.CreateToggle(PageMM2, "Reveal Roles (показать роли)", Config.RevealRoles, function(s)
+    Config.RevealRoles = s
+    if s then
+        local roles = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            table.insert(roles, plr.Name .. ": " .. GetRole(plr))
+        end
+        R.Notify("🎭 Роли: " .. table.concat(roles, " | "), 5)
+    end
+end)
+UI.CreateToggle(PageMM2, "Auto Win (авто-победа)", Config.AutoWin, function(s) Config.AutoWin = s end)
+UI.CreateToggle(PageMM2, "Second Chance (вторая жизнь)", Config.SecondChance, function(s) Config.SecondChance = s end)
+UI.CreateToggle(PageMM2, "Auto Farm Coins", Config.AutoFarmCoins, function(s) Config.AutoFarmCoins = s end)
 
 UI.CreateSection(PageMM2, "⚡ SPEED")
 UI.CreateToggle(PageMM2, "Speed Hack", Config.SpeedHack, function(s)
@@ -1196,14 +1454,15 @@ UI.CreateSlider(PageMM2, "Скорость Spin", 1, 60, Config.SpinSpeed, funct
 UI.CreateToggle(PageMM2, "Bhop", Config.Bhop, function(s) Config.Bhop = s end)
 UI.CreateToggle(PageMM2, "Invis", Config.Invis, function(s) Config.Invis = s end)
 UI.CreateToggle(PageMM2, "Invis Bind (G)", Config.InvisBind, function(s) Config.InvisBind = s end)
+UI.CreateToggle(PageMM2, "Click TP", Config.ClickTP, function(s) Config.ClickTP = s end)
 
-print("✅ [Deepsik v5.0] Часть 3/5 — Home, General, MM2")
-R.Notify("⏳ Загрузка 3/5...", 1)
+print("✅ [Deepsik v6.0] Часть 3/6 — Home, General, MM2")
+R.Notify("⏳ Загрузка 3/6...", 1)
 
 --[[
     ╔══════════════════════════════════════════╗
-    ║      DEEPSIK HUB v5.0                    ║
-    ║      ЧАСТЬ 4/5: Visuals + Target + Fun   ║
+    ║      DEEPSIK HUB v6.0                    ║
+    ║      ЧАСТЬ 4/6: Visuals + Target         ║
     ╚══════════════════════════════════════════╝
 ]]
 
@@ -1222,7 +1481,6 @@ local TweenService = R.TweenService
 local ContentFrame = R.ContentFrame
 local PageVisuals = R.PageVisuals
 local PageTarget = R.PageTarget
-local PageFun = R.PageFun
 
 local GetChar = getgenv().DeepsikGetChar
 local GetTargets = getgenv().DeepsikGetTargets
@@ -1234,7 +1492,7 @@ local GetEquippedTool = getgenv().DeepsikGetTool
 -- ==================================================================
 UI.CreateSection(PageVisuals, "🔫 GUN MODEL")
 UI.CreateDropdown(PageVisuals, "Select Model", {
-    "BigUSP-S", "BigKnife", "BigRevolver", "Sword", "Raygun", "Golden Gun"
+    "BigUSP-S", "BigKnife", "BigRevolver", "Sword", "Raygun", "Golden Gun", "Candy Cane", "Nerf Gun"
 }, Config.GunModelType, function(v)
     Config.GunModelType = v
 end)
@@ -1246,20 +1504,14 @@ UI.CreateSection(PageVisuals, "✨ GUN BEAM")
 UI.CreateDropdown(PageVisuals, "Beam Type", {"Default", "Rainbow", "Neon", "Fire", "Ice"}, "Default", function(v)
     Config.GunBeamType = v
 end)
-UI.CreateCard(PageVisuals, "Beam Color", {
-    hasColor = true,
-    color = Config.GunBeamColor,
-    hasToggle = false,
-    hasSettings = false,
-    onColor = function(colorBox)
-        Config.GunBeamColor = colorBox.BackgroundColor3
-    end,
-})
+UI.CreateColorPicker(PageVisuals, "Beam Color", Config.GunBeamColor, function(c)
+    Config.GunBeamColor = c
+end)
 UI.CreateToggle(PageVisuals, "Gun Beam (лазер)", Config.GunBeam, function(s)
     Config.GunBeam = s
 end)
 
-UI.CreateSection(PageVisuals, "👤 AVATAR")
+UI.CreateSection(PageVisuals, "👤 AVATAR (KITI)")
 UI.CreateCard(PageVisuals, "Skeleton ESP", {
     hasColor = true,
     color = Color3.fromRGB(200, 130, 255),
@@ -1267,7 +1519,7 @@ UI.CreateCard(PageVisuals, "Skeleton ESP", {
     hasSettings = true,
     default = Config.SkeletonESP,
     callback = function(s) Config.SkeletonESP = s end,
-    onSettings = function() R.Notify("⚙ Настройки Skeleton ESP", 2) end,
+    onSettings = function() R.Notify("⚙ Skeleton ESP", 2) end,
 })
 UI.CreateCard(PageVisuals, "China Hat", {
     hasColor = true,
@@ -1276,7 +1528,7 @@ UI.CreateCard(PageVisuals, "China Hat", {
     hasSettings = true,
     default = Config.ChinaHat,
     callback = function(s) Config.ChinaHat = s end,
-    onSettings = function() R.Notify("⚙ Настройки China Hat", 2) end,
+    onSettings = function() R.Notify("⚙ China Hat", 2) end,
 })
 UI.CreateCard(PageVisuals, "Jump Circle", {
     hasColor = true,
@@ -1285,14 +1537,38 @@ UI.CreateCard(PageVisuals, "Jump Circle", {
     hasSettings = true,
     default = Config.JumpCircle,
     callback = function(s) Config.JumpCircle = s end,
-    onSettings = function() R.Notify("⚙ Настройки Jump Circle", 2) end,
+    onSettings = function() R.Notify("⚙ Jump Circle", 2) end,
 })
+UI.CreateToggle(PageVisuals, "Big Head", Config.BigHead, function(s)
+    Config.BigHead = s
+    if LP.Character then
+        local head = LP.Character:FindFirstChild("Head")
+        if head then
+            local mesh = head:FindFirstChildOfClass("SpecialMesh")
+            if mesh then mesh.Scale = s and Vector3.new(2, 2, 2) or Vector3.new(1.25, 1.25, 1.25) end
+        end
+    end
+end)
+UI.CreateToggle(PageVisuals, "Fullbright", Config.Fullbright, function(s)
+    Config.Fullbright = s
+    if s then
+        R.Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+        R.Lighting.Brightness = 3
+        R.Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+    else
+        R.Lighting.Ambient = Color3.fromRGB(70, 70, 70)
+        R.Lighting.Brightness = 2
+        R.Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+    end
+end)
 
 UI.CreateSection(PageVisuals, "👁️ ESP")
 UI.CreateToggle(PageVisuals, "ESP игроков", Config.ESP, function(s) Config.ESP = s end)
 UI.CreateToggle(PageVisuals, "Role ESP", Config.RoleESP, function(s) Config.RoleESP = s end)
 UI.CreateToggle(PageVisuals, "Gun ESP", Config.GunESP, function(s) Config.GunESP = s end)
 UI.CreateToggle(PageVisuals, "Tracers", Config.Tracers, function(s) Config.Tracers = s end)
+UI.CreateToggle(PageVisuals, "Hitbox Expander", Config.HitboxExpander, function(s) Config.HitboxExpander = s end)
+UI.CreateSlider(PageVisuals, "Hitbox Size", 2, 20, Config.HitboxSize, function(v) Config.HitboxSize = v end)
 
 -- ============ ЛОГИКА: CHINA HAT ============
 local chinaHats = {}
@@ -1314,16 +1590,13 @@ local function UpdateChinaHats()
                         hat.Color = Config.ChinaHatColor
                         hat.Material = Enum.Material.Neon
                         hat.Parent = head
-                        -- Weld
                         local weld = Instance.new("WeldConstraint")
                         weld.Part0 = hat
                         weld.Part1 = head
                         weld.Parent = hat
                         chinaHats[plr] = hat
                     end
-                    if chinaHats[plr] then
-                        chinaHats[plr].Color = Config.ChinaHatColor
-                    end
+                    if chinaHats[plr] then chinaHats[plr].Color = Config.ChinaHatColor end
                 else
                     if chinaHats[plr] then
                         pcall(function() chinaHats[plr]:Destroy() end)
@@ -1336,9 +1609,7 @@ local function UpdateChinaHats()
 end
 
 table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
-    if tick() % 0.5 < 0.02 then
-        pcall(UpdateChinaHats)
-    end
+    if tick() % 0.5 < 0.02 then pcall(UpdateChinaHats) end
 end))
 
 -- ============ ЛОГИКА: JUMP CIRCLE ============
@@ -1369,11 +1640,11 @@ table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
 end))
 
 -- ============ ЛОГИКА: GUN BEAM ============
-local laserFolder = Workspace:FindFirstChild("DeepsikBeams")
-if not laserFolder then
-    laserFolder = Instance.new("Folder")
-    laserFolder.Name = "DeepsikBeams"
-    laserFolder.Parent = Workspace
+local beamFolder = Workspace:FindFirstChild("DeepsikBeams")
+if not beamFolder then
+    beamFolder = Instance.new("Folder")
+    beamFolder.Name = "DeepsikBeams"
+    beamFolder.Parent = Workspace
 end
 
 local function CreateBeam(fromPos, toPos)
@@ -1387,7 +1658,7 @@ local function CreateBeam(fromPos, toPos)
     part.Material = Enum.Material.Neon
     part.Color = Config.GunBeamColor
     part.Transparency = 0.15
-    part.Parent = laserFolder
+    part.Parent = beamFolder
     TweenService:Create(part, TweenInfo.new(0.5), {Transparency = 1}):Play()
     task.delay(0.6, function() pcall(function() part:Destroy() end) end)
 end
@@ -1414,12 +1685,31 @@ table.insert(getgenv().DeepsikConns, LP.CharacterAdded:Connect(function(c)
     HookTools(c)
 end))
 
+-- ============ ЛОГИКА: HITBOX EXPANDER ============
+table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
+    if not Config.HitboxExpander then return end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                pcall(function()
+                    hrp.Size = Vector3.new(Config.HitboxSize, Config.HitboxSize, Config.HitboxSize)
+                    hrp.Transparency = 0.7
+                    hrp.CanCollide = false
+                    hrp.Massless = true
+                end)
+            end
+        end
+    end
+end))
+
 -- ==================================================================
 -- TARGET
 -- ==================================================================
 UI.CreateSection(PageTarget, "🎯 ЦЕЛИ")
 
 UI.CreateToggle(PageTarget, "Kill Aura (все)", Config.KillAura, function(s) Config.KillAura = s end)
+UI.CreateSlider(PageTarget, "Kill Aura Radius", 5, 100, Config.AuraRange, function(v) Config.AuraRange = v end)
 UI.CreateToggle(PageTarget, "Kill Only Sheriff", Config.KillOnlySheriff, function(s) Config.KillOnlySheriff = s end)
 UI.CreateToggle(PageTarget, "Aim Assist All", Config.AimAssistAll, function(s) Config.AimAssistAll = s end)
 UI.CreateSlider(PageTarget, "Aim Assist FOV", 10, 500, Config.AimAssistAllFOV, function(v) Config.AimAssistAllFOV = v end)
@@ -1427,7 +1717,7 @@ UI.CreateSlider(PageTarget, "Aim Assist FOV", 10, 500, Config.AimAssistAllFOV, f
 UI.CreateSection(PageTarget, "🔪 KNIFE")
 UI.CreateToggle(PageTarget, "Knife Aimbot", Config.KnifeAimbot, function(s) Config.KnifeAimbot = s end)
 
-UI.CreateSection(PageTarget, "📋 ЦЕЛЕВОЙ ИГРОК")
+UI.CreateSection(PageTarget, "📋 ТЕЛЕПОРТ")
 
 local playerList = {}
 for _, p in ipairs(Players:GetPlayers()) do
@@ -1458,7 +1748,7 @@ UI.CreateButton(PageTarget, "🔪 TP к Murder", Color3.fromRGB(220, 80, 80), fu
         hrp.CFrame = targets[1].hrp.CFrame * CFrame.new(0, 0, 3)
         R.Notify("🔪 К Murder", 2)
     else
-        R.Notify("❌ Murder не найден", 2)
+        R.Notify("❌ Murder не найден (нож в руках)", 2)
     end
 end)
 
@@ -1469,7 +1759,7 @@ UI.CreateButton(PageTarget, "🚔 TP к Sheriff", Color3.fromRGB(80, 130, 220), 
         hrp.CFrame = targets[1].hrp.CFrame * CFrame.new(0, 0, 3)
         R.Notify("🚔 К Sheriff", 2)
     else
-        R.Notify("❌ Sheriff не найден", 2)
+        R.Notify("❌ Sheriff не найден (пушка в руках)", 2)
     end
 end)
 
@@ -1484,15 +1774,154 @@ UI.CreateButton(PageTarget, "🏠 TP в Lobby", Color3.fromRGB(100, 180, 100), f
     end
 end)
 
+print("✅ [Deepsik v6.0] Часть 4/6 — Visuals + Target")
+R.Notify("⏳ Загрузка 4/6...", 1)
+
+--[[
+    ╔══════════════════════════════════════════╗
+    ║      DEEPSIK HUB v6.0                    ║
+    ║      ЧАСТЬ 5A: Fun (Fling + Fake Items)  ║
+    ╚══════════════════════════════════════════╝
+]]
+
+local R = getgenv().DeepsikRefs
+local UI = getgenv().DeepsikUI
+if not R or not UI then warn("❌ Запусти Части 1, 2A, 2B, 3, 4!") return end
+
+local Config = R.Config
+local LP = R.LocalPlayer
+local Players = R.Players
+local RunService = R.RunService
+local UserInputService = R.UserInputService
+local Workspace = R.Workspace
+local Camera = R.Camera
+local PageFun = R.PageFun
+
+local GetChar = getgenv().DeepsikGetChar
+local GetTargets = getgenv().DeepsikGetTargets
+local GetRole = getgenv().DeepsikGetRole
+
 -- ==================================================================
--- FUN
+-- FUN: FLING
 -- ==================================================================
-UI.CreateSection(PageFun, "🎉 ФУНКЦИИ")
+UI.CreateSection(PageFun, "😈 FLING")
 
 UI.CreateToggle(PageFun, "Touch Fling", Config.TouchFling, function(s) Config.TouchFling = s end)
 UI.CreateToggle(PageFun, "Click Fling", Config.ClickFling, function(s) Config.ClickFling = s end)
+UI.CreateToggle(PageFun, "Fling All", Config.FlingAll, function(s) Config.FlingAll = s end)
+UI.CreateToggle(PageFun, "Fling Murder", Config.FlingMurder, function(s) Config.FlingMurder = s end)
+UI.CreateToggle(PageFun, "Fling Sheriff", Config.FlingSheriff, function(s) Config.FlingSheriff = s end)
 
+-- Fling All
+table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
+    if not Config.FlingAll then return end
+    local _, myHrp = GetChar()
+    if not myHrp then return end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                pcall(function()
+                    hrp.Velocity = Vector3.new(500, 500, 500)
+                    local bv = Instance.new("BodyVelocity")
+                    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bv.Velocity = Vector3.new(500, 500, 500)
+                    bv.Parent = hrp
+                    task.delay(0.3, function() pcall(function() bv:Destroy() end) end)
+                end)
+            end
+        end
+    end
+end))
+
+-- Fling Murder
+table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
+    if not Config.FlingMurder then return end
+    local targets = GetTargets(function(p) return GetRole(p) == "Murder" end)
+    for _, t in ipairs(targets) do
+        pcall(function()
+            t.hrp.Velocity = Vector3.new(500, 500, 500)
+            local bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bv.Velocity = Vector3.new(500, 500, 500)
+            bv.Parent = t.hrp
+            task.delay(0.3, function() pcall(function() bv:Destroy() end) end)
+        end)
+    end
+end))
+
+-- Fling Sheriff
+table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
+    if not Config.FlingSheriff then return end
+    local targets = GetTargets(function(p) return GetRole(p) == "Sheriff" end)
+    for _, t in ipairs(targets) do
+        pcall(function()
+            t.hrp.Velocity = Vector3.new(500, 500, 500)
+            local bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bv.Velocity = Vector3.new(500, 500, 500)
+            bv.Parent = t.hrp
+            task.delay(0.3, function() pcall(function() bv:Destroy() end) end)
+        end)
+    end
+end))
+
+-- Touch Fling
+table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
+    if not Config.TouchFling then return end
+    local _, myHrp = GetChar()
+    if not myHrp then return end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LP and plr.Character then
+            local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+            if hrp and (myHrp.Position - hrp.Position).Magnitude < 8 then
+                pcall(function()
+                    local bv = Instance.new("BodyVelocity")
+                    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bv.Velocity = Vector3.new(500, 800, 500)
+                    bv.Parent = hrp
+                    task.delay(0.3, function() pcall(function() bv:Destroy() end) end)
+                end)
+            end
+        end
+    end
+end))
+
+-- Click Fling
+table.insert(getgenv().DeepsikConns, UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if not Config.ClickFling then return end
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+    local mouse = UserInputService:GetMouseLocation()
+    local ray = Camera:ViewportPointToRay(mouse.X, mouse.Y)
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {LP.Character}
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local hit = Workspace:Raycast(ray.Origin, ray.Direction * 500, params)
+    if hit and hit.Instance then
+        local char = hit.Instance:FindFirstAncestorOfClass("Model")
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                pcall(function()
+                    local bv = Instance.new("BodyVelocity")
+                    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                    bv.Velocity = Vector3.new(1000, 1000, 1000)
+                    bv.Parent = hrp
+                    task.delay(0.3, function() pcall(function() bv:Destroy() end) end)
+                end)
+                local targetPlr = Players:GetPlayerFromCharacter(char)
+                if targetPlr then R.Notify("😈 Fling: " .. targetPlr.Name, 2) end
+            end
+        end
+    end
+end))
+
+-- ==================================================================
+-- FUN: FAKE ITEMS
+-- ==================================================================
 UI.CreateSection(PageFun, "🎭 FAKE ITEMS")
+
 UI.CreateToggle(PageFun, "Fake Korblox", Config.FakeKorblox, function(s)
     Config.FakeKorblox = s
     if not LP.Character then return end
@@ -1501,6 +1930,7 @@ UI.CreateToggle(PageFun, "Fake Korblox", Config.FakeKorblox, function(s)
         if leg then pcall(function() leg.Transparency = s and 1 or 0 end) end
     end
 end)
+
 UI.CreateToggle(PageFun, "Fake Headless", Config.FakeHeadless, function(s)
     Config.FakeHeadless = s
     if not LP.Character then return end
@@ -1514,42 +1944,29 @@ UI.CreateToggle(PageFun, "Fake Headless", Config.FakeHeadless, function(s)
     end
 end)
 
-print("✅ [Deepsik v5.0] Часть 4/5 — Visuals + Target + Fun")
-R.Notify("⏳ Загрузка 4/5...", 1)
+print("✅ [Deepsik v6.0] Часть 5A — Fun (Fling + Fake Items)")
+R.Notify("⏳ Загрузка 5A...", 1)
 
 --[[
     ╔══════════════════════════════════════════╗
-    ║      DEEPSIK HUB v5.0                    ║
-    ║      ЧАСТЬ 5/5: Emotes + Sound + Configs + ESP + Управление
+    ║      DEEPSIK HUB v6.0                    ║
+    ║      ЧАСТЬ 5B: Emotes + Sound            ║
     ╚══════════════════════════════════════════╝
 ]]
 
 local R = getgenv().DeepsikRefs
 local UI = getgenv().DeepsikUI
-if not R or not UI then warn("❌ Запусти Части 1-4!") return end
+if not R or not UI then warn("❌ Запусти Части 1-5A!") return end
 
 local Config = R.Config
 local LP = R.LocalPlayer
 local Players = R.Players
-local RunService = R.RunService
-local UserInputService = R.UserInputService
-local Camera = R.Camera
-local TweenService = R.TweenService
-local TeleportService = R.TeleportService
-local Lighting = R.Lighting
 local Workspace = R.Workspace
 local PageEmotes = R.PageEmotes
 local PageSound = R.PageSound
-local PageConfigs = R.PageConfigs
-local MainFrame = R.MainFrame
-local ScreenGui = R.ScreenGui
-local CloseBtn = R.CloseBtn
-local ToggleBtn = R.ToggleBtn
-local ESPObjects = getgenv().DeepsikESP
-local GetRole = getgenv().DeepsikGetRole
 
 -- ==================================================================
--- EMOTES
+-- EMOTES (все эмоции)
 -- ==================================================================
 UI.CreateSection(PageEmotes, "💃 АНИМАЦИИ")
 
@@ -1560,6 +1977,13 @@ local ANIMATIONS = {
     Wave = "rbxassetid://507770239",
     Point = "rbxassetid://507770453",
     Salute = "rbxassetid://507768375",
+    Sit = "rbxassetid://2506281703",
+    Floss = "rbxassetid://5916837175",
+    Dab = "rbxassetid://4831309985",
+    Ninja = "rbxassetid://507769333",
+    Headless = "rbxassetid://4831375742",
+    Zen = "rbxassetid://507770239",
+    Zombie = "rbxassetid://507772056",
 }
 
 local currentAnimTrack = nil
@@ -1599,24 +2023,20 @@ local function PlayAnimation(animId, loop)
     end
 end
 
-UI.CreateButton(PageEmotes, "💃 Танец 1", R.Colors.accent, function()
-    PlayAnimation(ANIMATIONS.Dance1, true)
-end)
-UI.CreateButton(PageEmotes, "🕺 Танец 2", R.Colors.accent, function()
-    PlayAnimation(ANIMATIONS.Dance2, true)
-end)
-UI.CreateButton(PageEmotes, "🌀 Танец 3", R.Colors.accent, function()
-    PlayAnimation(ANIMATIONS.Dance3, true)
-end)
-UI.CreateButton(PageEmotes, "👋 Махнуть рукой", R.Colors.accent, function()
-    PlayAnimation(ANIMATIONS.Wave, false)
-end)
-UI.CreateButton(PageEmotes, "👉 Указать", R.Colors.accent, function()
-    PlayAnimation(ANIMATIONS.Point, false)
-end)
-UI.CreateButton(PageEmotes, "🫡 Честь", R.Colors.accent, function()
-    PlayAnimation(ANIMATIONS.Salute, false)
-end)
+-- Эмоции (все кнопки)
+UI.CreateButton(PageEmotes, "💃 Танец 1", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Dance1, true) end)
+UI.CreateButton(PageEmotes, "🕺 Танец 2", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Dance2, true) end)
+UI.CreateButton(PageEmotes, "🌀 Танец 3", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Dance3, true) end)
+UI.CreateButton(PageEmotes, "👋 Махнуть рукой", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Wave, false) end)
+UI.CreateButton(PageEmotes, "👉 Указать", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Point, false) end)
+UI.CreateButton(PageEmotes, "🫡 Честь", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Salute, false) end)
+UI.CreateButton(PageEmotes, "🪑 Сидеть (Sit)", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Sit, true) end)
+UI.CreateButton(PageEmotes, "🕺 Floss", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Floss, true) end)
+UI.CreateButton(PageEmotes, "👆 Dab", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Dab, false) end)
+UI.CreateButton(PageEmotes, "🥷 Ninja", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Ninja, false) end)
+UI.CreateButton(PageEmotes, "💀 Headless", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Headless, true) end)
+UI.CreateButton(PageEmotes, "🧘 Zen", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Zen, true) end)
+UI.CreateButton(PageEmotes, "🧟 Zombie", R.Colors.accent, function() PlayAnimation(ANIMATIONS.Zombie, true) end)
 UI.CreateButton(PageEmotes, "🛑 Остановить анимацию", Color3.fromRGB(220, 80, 80), function()
     if currentAnimTrack then
         pcall(function() currentAnimTrack:Stop() end)
@@ -1627,7 +2047,7 @@ end)
 -- ==================================================================
 -- SOUND
 -- ==================================================================
-UI.CreateSection(PageSound, "🔊 ЗВУКИ")
+UI.CreateSection(PageSound, "🔊 МУЗЫКА")
 
 local musicInstance = nil
 local function PlayMusic(id)
@@ -1641,21 +2061,87 @@ local function PlayMusic(id)
     R.Notify("🎵 Играет музыка", 2)
 end
 
-UI.CreateButton(PageSound, "🎵 Lofi", R.Colors.accent, function()
-    PlayMusic("rbxassetid://1837879082")
-end)
-UI.CreateButton(PageSound, "🎵 Phonk", R.Colors.accent, function()
-    PlayMusic("rbxassetid://1838457666")
-end)
-UI.CreateButton(PageSound, "🎵 Anime OP", R.Colors.accent, function()
-    PlayMusic("rbxassetid://1836248630")
-end)
-UI.CreateButton(PageSound, "🛑 Остановить музыку", Color3.fromRGB(220, 80, 80), function()
+UI.CreateButton(PageSound, "🎵 Lofi", R.Colors.accent, function() PlayMusic("rbxassetid://1837879082") end)
+UI.CreateButton(PageSound, "🎵 Phonk", R.Colors.accent, function() PlayMusic("rbxassetid://1838457666") end)
+UI.CreateButton(PageSound, "🎵 Anime OP", R.Colors.accent, function() PlayMusic("rbxassetid://1836248630") end)
+UI.CreateButton(PageSound, "🎵 Piano", R.Colors.accent, function() PlayMusic("rbxassetid://1836197175") end)
+UI.CreateButton(PageSound, "🎵 Guitar", R.Colors.accent, function() PlayMusic("rbxassetid://1837876001") end)
+UI.CreateButton(PageSound, "🛑 Стоп", Color3.fromRGB(220, 80, 80), function()
     if musicInstance then pcall(function() musicInstance:Destroy() end); musicInstance = nil end
 end)
 
+print("✅ [Deepsik v6.0] Часть 5B — Emotes + Sound")
+R.Notify("⏳ Загрузка 5B...", 1)
+
+--[[
+    ╔══════════════════════════════════════════╗
+    ║      DEEPSIK HUB v6.0                    ║
+    ║      ЧАСТЬ 6A: Configs                   ║
+    ╚══════════════════════════════════════════╝
+]]
+
+local R = getgenv().DeepsikRefs
+local UI = getgenv().DeepsikUI
+if not R or not UI then warn("❌ Запусти Части 1-5B!") return end
+
+local Config = R.Config
+local LP = R.LocalPlayer
+local TeleportService = R.TeleportService
+local PageConfigs = R.PageConfigs
+local ScreenGui = R.ScreenGui
+
 -- ==================================================================
--- CONFIGS
+-- ФОНЫ (выбор из 10)
+-- ==================================================================
+UI.CreateSection(PageConfigs, "🖼 ФОНЫ (выбор из 10)")
+
+-- Замени ID на свои (rbxassetid://...)
+local BACKGROUNDS = {
+    {name = "1. Девушка с искрой", id = ""},
+    {name = "2. Глаза фиолетовые", id = ""},
+    {name = "3. Девушка на закате", id = ""},
+    {name = "4. Облака", id = ""},
+    {name = "5. Неко-девочка", id = ""},
+    {name = "6. Тёмная девушка", id = ""},
+    {name = "7. Девушка в разрыве", id = ""},
+    {name = "8. Синие глаза", id = ""},
+    {name = "9. Девушка в снегу", id = ""},
+    {name = "10. Зайка", id = ""},
+}
+
+local bgNames = {}
+for _, bg in ipairs(BACKGROUNDS) do table.insert(bgNames, bg.name) end
+
+UI.CreateDropdown(PageConfigs, "Выбрать фон", bgNames, BACKGROUNDS[1].name, function(selected)
+    for _, bg in ipairs(BACKGROUNDS) do
+        if bg.name == selected and bg.id ~= "" then
+            R.DeepsikSetBg(bg.id)
+            R.Notify("🖼 Фон: " .. selected, 2)
+            return
+        end
+    end
+    R.Notify("⚠ Сначала загрузите AssetID (поле ниже)", 3)
+end)
+
+UI.CreateInput(PageConfigs, "Вставить AssetID фона (rbxassetid://...)", "", function(text)
+    if text ~= "" then
+        R.DeepsikSetBg(text)
+        R.Notify("🖼 Фон установлен", 2)
+    end
+end)
+
+UI.CreateButton(PageConfigs, "❌ Убрать фон", Color3.fromRGB(150, 150, 170), function()
+    R.DeepsikSetBg("")
+end)
+
+UI.CreateSlider(PageConfigs, "Прозрачность фона (0-100)", 0, 100, 25, function(v)
+    if R.BgImage then
+        R.BgImage.ImageTransparency = v / 100
+    end
+end)
+
+-- ==================================================================
+-- СОХРАНЕНИЕ КОНФИГА
 -- ==================================================================
 UI.CreateSection(PageConfigs, "💾 СОХРАНЕНИЕ")
 
@@ -1697,11 +2183,15 @@ UI.CreateButton(PageConfigs, "📥 Загрузить конфиг", R.Colors.ac
                     Config[k] = v
                 end
             end
-            R.Notify("📥 Загружено (перезапусти)", 3)
+            R.Notify("📥 Загружено (перезапусти скрипт)", 3)
         else
             R.Notify("❌ Конфиг не найден", 2)
         end
     end)
+end)
+
+UI.CreateToggle(PageConfigs, "Auto Load Config (при старте)", false, function(s)
+    Config.AutoLoadConfig = s
 end)
 
 UI.CreateButton(PageConfigs, "📂 Список конфигов", Color3.fromRGB(150, 150, 170), function()
@@ -1712,24 +2202,26 @@ UI.CreateButton(PageConfigs, "📂 Список конфигов", Color3.fromRG
                 local n = f:match("([^/\\]+)%.json$")
                 if n then table.insert(list, n) end
             end
-            if #list == 0 then
-                R.Notify("📂 Пусто", 2)
-            else
-                R.Notify("📂 " .. table.concat(list, ", "), 5)
-            end
+            if #list == 0 then R.Notify("📂 Пусто", 2)
+            else R.Notify("📂 " .. table.concat(list, ", "), 5) end
         else
             R.Notify("📂 Нет конфигов", 2)
         end
     end)
 end)
 
+-- ==================================================================
+-- ДЕЙСТВИЯ
+-- ==================================================================
 UI.CreateSection(PageConfigs, "🔧 ДЕЙСТВИЯ")
+
 UI.CreateButton(PageConfigs, "🔄 Rejoin сервер", R.Colors.accent, function()
     pcall(function() TeleportService:Teleport(game.PlaceId, LP) end)
 end)
+
 UI.CreateButton(PageConfigs, "❌ Выгрузить Hub", Color3.fromRGB(220, 80, 80), function()
     if getgenv().DeepsikStopFly then pcall(getgenv().DeepsikStopFly) end
-    for _, objs in pairs(ESPObjects) do
+    for _, objs in pairs(getgenv().DeepsikESP or {}) do
         for _, o in pairs(objs) do pcall(function() o:Remove() end) end
     end
     for _, c in pairs(getgenv().DeepsikConns or {}) do pcall(function() c:Disconnect() end) end
@@ -1738,8 +2230,38 @@ UI.CreateButton(PageConfigs, "❌ Выгрузить Hub", Color3.fromRGB(220, 8
     getgenv().DeepsikRefs = nil
 end)
 
+print("✅ [Deepsik v6.0] Часть 6A — Configs")
+R.Notify("⏳ Загрузка 6A...", 1)
+
+--[[
+    ╔══════════════════════════════════════════╗
+    ║      DEEPSIK HUB v6.0                    ║
+    ║      ЧАСТЬ 6B: ESP + Управление          ║
+    ╚══════════════════════════════════════════╝
+]]
+
+local R = getgenv().DeepsikRefs
+local UI = getgenv().DeepsikUI
+if not R or not UI then warn("❌ Запусти Части 1-6A!") return end
+
+local Config = R.Config
+local LP = R.LocalPlayer
+local Players = R.Players
+local RunService = R.RunService
+local UserInputService = R.UserInputService
+local Camera = R.Camera
+local TweenService = R.TweenService
+local Workspace = R.Workspace
+local MainFrame = R.MainFrame
+local ScreenGui = R.ScreenGui
+local CloseBtn = R.CloseBtn
+local ToggleBtn = R.ToggleBtn
+local ESPObjects = getgenv().DeepsikESP
+local GetRole = getgenv().DeepsikGetRole
+local GetChar = getgenv().DeepsikGetChar
+
 -- ==================================================================
--- ESP (с поддержкой аватара)
+-- ESP (рендеринг)
 -- ==================================================================
 local ROLE_COLORS = {
     Murder = Color3.fromRGB(255, 80, 80),
@@ -1775,14 +2297,10 @@ end
 
 local function RemoveESPPlayer(player)
     if ESPObjects[player] then
-        for _, o in pairs(ESPObjects[player]) do
-            pcall(function() o:Remove() end)
-        end
+        for _, o in pairs(ESPObjects[player]) do pcall(function() o:Remove() end) end
         ESPObjects[player] = nil
     end
 end
-
-local GunESPObjects = {}
 
 local function UpdateESP()
     for player, objs in pairs(ESPObjects) do
@@ -1790,7 +2308,6 @@ local function UpdateESP()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         local head = char and char:FindFirstChild("Head")
         local hum = char and char:FindFirstChildOfClass("Humanoid")
-
         local show = Config.ESP and hum and hum.Health > 0 and hrp and head
 
         if not show then
@@ -1808,12 +2325,9 @@ local function UpdateESP()
         if headOn and hrpOn then
             local h = math.abs(headPos.Y - hrpPos.Y) * 2
             local w = h * 0.6
-
             local role = GetRole(player)
             local col = Config.ESPColor
-            if Config.RoleESP and role ~= "Innocent" then
-                col = ROLE_COLORS[role]
-            end
+            if Config.RoleESP and role ~= "Innocent" then col = ROLE_COLORS[role] end
 
             pcall(function()
                 objs.Box.Size = Vector2.new(w, h)
@@ -1867,7 +2381,9 @@ if not getgenv().DeepsikNoDrawing then
     end))
 end
 
--- ============ FLY ============
+-- ==================================================================
+-- FLY
+-- ==================================================================
 local flyActive = false
 local flyBV, flyBG = nil, nil
 
@@ -1875,17 +2391,16 @@ local function StopFly()
     flyActive = false
     if flyBV then pcall(function() flyBV:Destroy() end); flyBV = nil end
     if flyBG then pcall(function() flyBG:Destroy() end); flyBG = nil end
-    local _, _, hum = getgenv().DeepsikGetChar()
+    local _, _, hum = GetChar()
     if hum then hum.PlatformStand = false end
 end
 
 local function StartFly()
     StopFly()
-    local _, hrp, hum = getgenv().DeepsikGetChar()
+    local _, hrp, hum = GetChar()
     if not hrp or not hum then return end
 
     hum.PlatformStand = true
-
     flyBV = Instance.new("BodyVelocity")
     flyBV.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     flyBV.Velocity = Vector3.new(0, 0, 0)
@@ -1896,12 +2411,11 @@ local function StartFly()
     flyBG.P = 10000
     flyBG.D = 500
     flyBG.Parent = hrp
-
     flyActive = true
 
     table.insert(getgenv().DeepsikConns, RunService.RenderStepped:Connect(function()
         if not flyActive or not Config.Fly then StopFly(); return end
-        local _, h, hum2 = getgenv().DeepsikGetChar()
+        local _, h, hum2 = GetChar()
         if not h or not hum2 then StopFly(); return end
 
         local dir = Vector3.new(0, 0, 0)
@@ -1922,17 +2436,21 @@ end
 getgenv().DeepsikStartFly = StartFly
 getgenv().DeepsikStopFly = StopFly
 
--- ============ SPIN ============
+-- ==================================================================
+-- SPIN
+-- ==================================================================
 local spinAngle = 0
 table.insert(getgenv().DeepsikConns, RunService.RenderStepped:Connect(function(dt)
     if not Config.Spin then return end
-    local _, hrp = getgenv().DeepsikGetChar()
+    local _, hrp = GetChar()
     if not hrp then return end
     spinAngle = spinAngle + Config.SpinSpeed * dt
     hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, spinAngle, 0)
 end))
 
--- ============ NOCLIP ============
+-- ==================================================================
+-- NOCLIP
+-- ==================================================================
 table.insert(getgenv().DeepsikConns, RunService.Stepped:Connect(function()
     if not Config.Noclip or not LP.Character then return end
     for _, part in ipairs(LP.Character:GetDescendants()) do
@@ -1940,19 +2458,23 @@ table.insert(getgenv().DeepsikConns, RunService.Stepped:Connect(function()
     end
 end))
 
--- ============ INFINITE JUMP ============
+-- ==================================================================
+-- INFINITE JUMP
+-- ==================================================================
 table.insert(getgenv().DeepsikConns, UserInputService.JumpRequest:Connect(function()
     if Config.InfiniteJump then
-        local _, _, hum = getgenv().DeepsikGetChar()
+        local _, _, hum = GetChar()
         if hum then pcall(function() hum:ChangeState(Enum.HumanoidStateType.Jumping) end) end
     end
 end))
 
--- ============ BHOP ============
+-- ==================================================================
+-- BHOP
+-- ==================================================================
 local bhopSpeed = 16
 table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
     if not Config.Bhop then bhopSpeed = 16; return end
-    local _, _, hum = getgenv().DeepsikGetChar()
+    local _, _, hum = GetChar()
     if not hum then return end
     if hum:GetState() == Enum.HumanoidStateType.Landed then
         bhopSpeed = math.min(bhopSpeed + 1.5, 100)
@@ -1964,7 +2486,9 @@ table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
     end
 end))
 
--- ============ INVIS ============
+-- ==================================================================
+-- INVIS
+-- ==================================================================
 table.insert(getgenv().DeepsikConns, RunService.Stepped:Connect(function()
     if not Config.Invis or not LP.Character then return end
     for _, part in ipairs(LP.Character:GetDescendants()) do
@@ -1974,7 +2498,9 @@ table.insert(getgenv().DeepsikConns, RunService.Stepped:Connect(function()
     end
 end))
 
--- ============ ANTI-AFK ============
+-- ==================================================================
+-- ANTI-AFK
+-- ==================================================================
 table.insert(getgenv().DeepsikConns, LP.Idled:Connect(function()
     if not Config.AntiAFK then return end
     pcall(function()
@@ -1983,7 +2509,26 @@ table.insert(getgenv().DeepsikConns, LP.Idled:Connect(function()
     end)
 end))
 
--- ============ INVIS BIND ============
+-- ==================================================================
+-- CLICK TP
+-- ==================================================================
+table.insert(getgenv().DeepsikConns, UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if Config.ClickTP and input.UserInputType == Enum.UserInputType.MouseButton2 then
+        local mouse = UserInputService:GetMouseLocation()
+        local ray = Camera:ViewportPointToRay(mouse.X, mouse.Y)
+        local _, hrp = GetChar()
+        if hrp then
+            pcall(function()
+                hrp.CFrame = CFrame.new(ray.Origin + ray.Direction * 50)
+            end)
+        end
+    end
+end))
+
+-- ==================================================================
+-- INVIS BIND (G)
+-- ==================================================================
 table.insert(getgenv().DeepsikConns, UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if Config.InvisBind and input.KeyCode == Enum.KeyCode.G then
@@ -2000,7 +2545,68 @@ table.insert(getgenv().DeepsikConns, UserInputService.InputBegan:Connect(functio
 end))
 
 -- ==================================================================
--- УПРАВЛЕНИЕ
+-- AUTO FARM COINS
+-- ==================================================================
+table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
+    if not Config.AutoFarmCoins then return end
+    local _, myHrp = GetChar()
+    if not myHrp then return end
+    for _, obj in ipairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and obj.Name:lower():find("coin") then
+            local d = (myHrp.Position - obj.Position).Magnitude
+            if d < 100 and d > 3 then
+                pcall(function()
+                    myHrp.CFrame = CFrame.new(obj.Position + Vector3.new(0, 3, 0))
+                end)
+            end
+        end
+    end
+end))
+
+-- ==================================================================
+-- AUTO WIN
+-- ==================================================================
+table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
+    if not Config.AutoWin then return end
+    local tool = getgenv().DeepsikGetTool()
+    if not tool then return end
+    local targets = getgenv().DeepsikGetTargets()
+    if #targets == 0 then return end
+    local t = targets[1]
+    local _, myHrp = GetChar()
+    if myHrp then
+        pcall(function()
+            myHrp.CFrame = t.hrp.CFrame * CFrame.new(0, 0, 2)
+            tool:Activate()
+        end)
+    end
+end))
+
+-- ==================================================================
+-- SECOND CHANCE
+-- ==================================================================
+local secondChanceUsed = false
+table.insert(getgenv().DeepsikConns, LP.CharacterAdded:Connect(function()
+    secondChanceUsed = false
+end))
+
+table.insert(getgenv().DeepsikConns, RunService.Heartbeat:Connect(function()
+    if not Config.SecondChance then return end
+    if not LP.Character then return end
+    local hum = LP.Character:FindFirstChildOfClass("Humanoid")
+    if hum and hum.Health <= 0 and not secondChanceUsed then
+        secondChanceUsed = true
+        R.Notify("💚 Second Chance активирован!", 3)
+        pcall(function()
+            hum.Health = hum.MaxHealth
+            local hrp = LP.Character:FindFirstChild("HumanoidRootPart")
+            if hrp then hrp.CFrame = CFrame.new(0, 100, 0) end
+        end)
+    end
+end))
+
+-- ==================================================================
+-- УПРАВЛЕНИЕ ОКНОМ
 -- ==================================================================
 CloseBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
@@ -2012,7 +2618,9 @@ ToggleBtn.MouseButton1Click:Connect(function()
     ToggleBtn.Visible = false
 end)
 
--- Хоткеи
+-- ==================================================================
+-- ХОТКЕИ
+-- ==================================================================
 table.insert(getgenv().DeepsikConns, UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
     if input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.F1 then
@@ -2038,12 +2646,13 @@ R.SwitchCategory(1)
 
 print([[
 ╔══════════════════════════════════════════╗
-║     🔫 DEEPSIK HUB v5.0 ЗАГРУЖЕН! 🔫     ║
+║     🔫 DEEPSIK HUB v6.0 ЗАГРУЖЕН! 🔫     ║
 ║     ─────────────────────────────        ║
 ║     Стиль: KITI                           ║
 ║     RightShift / F1 — меню                ║
 ║     Delete — выгрузить                    ║
 ║     G — Invis Bind                        ║
+║     RMB — Click TP (если включен)         ║
 ╚══════════════════════════════════════════╝
 ]])
-R.Notify("✅ Deepsik Hub v5.0 запущен!", 3)
+R.Notify("✅ Deepsik Hub v6.0 запущен!", 3)
